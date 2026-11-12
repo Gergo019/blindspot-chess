@@ -1,0 +1,53 @@
+name: blindspot
+
+services:
+  db:
+    # PostgreSQL with the pgvector extension available, in case explanations
+    # later need similarity search (e.g. "mistakes like this one").
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-blindspot}
+      POSTGRES_USER: ${POSTGRES_USER:-blindspot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-blindspot}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-blindspot}
+      DB_USERNAME: ${POSTGRES_USER:-blindspot}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-blindspot}
+      ANALYSIS_SERVICE_URL: http://analysis-service:8000
+      LICHESS_API_TOKEN: ${LICHESS_API_TOKEN:-}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+
+  analysis-service:
+    build: ./analysis-service
+    restart: unless-stopped
+    environment:
+      LLM_API_KEY: ${LLM_API_KEY:-}
+    ports:
+      - "${ANALYSIS_SERVICE_PORT:-8000}:8000"
+
+  # frontend:          # Phase 3: React + TypeScript
+  #   build: ./frontend
+  #   depends_on: [backend]
+  #   ports:
+  #     - "5173:80"
+
+volumes:
+  db-data:
