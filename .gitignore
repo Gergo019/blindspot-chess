@@ -1,0 +1,37 @@
+# Environment
+.env
+*.env.local
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# Java / Maven
+backend/target/
+*.class
+*.log
+
+# Node
+node_modules/
+frontend/dist/
+frontend/build/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local vector stores / data
+analysis-service/data/
+eval-results/
+
+# Local AI-assistant configuration (kept out of the public repo)
+CLAUDE.md
