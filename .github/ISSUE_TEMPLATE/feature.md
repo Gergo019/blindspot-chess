@@ -6,7 +6,7 @@ labels: enhancement
 
 ## Goal
 
-<!-- What should a user be able to do, and why does it matter for hunters? -->
+<!-- What should a player be able to do, and why does it help them improve? -->
 
 ## Acceptance criteria
 
@@ -15,4 +15,4 @@ labels: enhancement
 
 ## Notes
 
-<!-- Affected parts (backend / frontend / ai / db), open questions, links. -->
+<!-- Affected parts (backend / analysis / frontend / db), open questions, links. -->

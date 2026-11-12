@@ -16,7 +16,7 @@ class DomainRulesTest {
 
     private static final String FACTS = "{\"motif\":\"HANGING_PIECE\",\"piece\":\"knight\",\"square\":\"e5\"}";
 
-    private final Game game = TestData.game(TestData.lichessAccount(TestData.user("hunter")), "g1");
+    private final Game game = TestData.game(TestData.lichessAccount(TestData.user("player")), "g1");
     private final MistakeFinding finding = TestData.hangingPiece(TestData.userBlunder(game, 7));
 
     @Test

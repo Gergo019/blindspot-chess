@@ -27,7 +27,7 @@ class DrillTest {
 
     @BeforeEach
     void setUp() {
-        user = TestData.user("hunter");
+        user = TestData.user("player");
         Game game = TestData.game(TestData.lichessAccount(user), "g1");
         drill = Drill.fromFinding(user, TestData.hangingPiece(TestData.userBlunder(game, 7)), NOW);
     }

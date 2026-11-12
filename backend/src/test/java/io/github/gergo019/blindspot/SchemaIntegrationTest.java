@@ -72,7 +72,7 @@ class SchemaIntegrationTest {
 
     @Test
     void coachingLoopRoundTrip() {
-        User user = users.save(TestData.user("hunter"));
+        User user = users.save(TestData.user("player"));
         ChessAccount account = accounts.save(TestData.lichessAccount(user));
         Game game = games.save(TestData.game(account, "abcd1234"));
 
