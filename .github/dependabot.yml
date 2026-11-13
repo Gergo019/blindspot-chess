@@ -1,18 +1,46 @@
 version: 2
+
+# One grouped pull request per ecosystem instead of one per dependency.
+# Java LTS and Python upgrades are done by hand (see docs/devlog.md,
+# "Post-merge cleanup"), so their base images only get the updates below.
 updates:
   - package-ecosystem: maven
     directory: /backend
     schedule:
       interval: weekly
+    groups:
+      all:
+        patterns: ["*"]
+
   - package-ecosystem: pip
     directory: /analysis-service
     schedule:
       interval: weekly
+    groups:
+      all:
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      all:
+        patterns: ["*"]
+
   - package-ecosystem: docker
     directories: [/backend, /analysis-service]
     schedule:
       interval: monthly
+    groups:
+      all:
+        patterns: ["*"]
+    ignore:
+      # Java: stay on the chosen LTS (eclipse-temurin:25-jre, maven:3.9-eclipse-temurin-25).
+      - dependency-name: eclipse-temurin
+        update-types: ["version-update:semver-major"]
+      - dependency-name: maven
+        update-types: ["version-update:semver-major"]
+      # Python: stay on the version the tests run on (python:3.13-slim).
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
