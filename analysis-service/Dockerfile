@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+FROM python:3.15-slim
 
 # ---- Pinned Stockfish: one official release binary, checksum-verified ----
 # Stockfish 19 ships "universal" binaries that detect the CPU's features at
