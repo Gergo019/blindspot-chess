@@ -24,6 +24,7 @@ jobs:
         run: mvn -B verify
 
   analysis-service:
+    # The job name is a required status check on main; keep it unchanged.
     name: Analysis service (install + smoke test)
     runs-on: ubuntu-latest
     defaults:
@@ -31,20 +32,12 @@ jobs:
         working-directory: analysis-service
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - run: sudo apt-get update && sudo apt-get install -y stockfish
-      - run: pip install -r requirements.txt httpx
-      - name: Health endpoint answers and finds Stockfish
-        run: |
-          python - <<'EOF'
-          from fastapi.testclient import TestClient
-          from app.main import app
-          body = TestClient(app).get("/health").json()
-          print(body)
-          assert body["status"] == "UP" and body["engine"] == "UP", body
-          EOF
+      # Tests run inside the Docker image, so they use exactly the pinned,
+      # checksum-verified Stockfish binary that production uses.
+      - name: Build the test image (pinned Stockfish)
+        run: docker build --target test -t analysis-test .
+      - name: Run pytest inside the image
+        run: docker run --rm analysis-test
 
   compose:
     name: Docker Compose stack
