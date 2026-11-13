@@ -61,6 +61,7 @@ The evaluation reports, per mode, unsupported claims (including examples that re
 
 - **backend** owns the domain and all persistence, organised by bounded context: `account`, `game`, `analysis`, `training`. Domain rules live in the entities (analysis lifecycle, verification, SM-2 scheduling), not in services.
 - **analysis-service** owns chess knowledge: engine analysis, motif detection, fact extraction and explanation verification. It is stateless; the backend is its only caller. Why Python: [ADR 0002](docs/decisions/0002-python-analysis-service.md).
+- **backend → analysis-service** is real and end-to-end tested: `AnalysisService.analyzeGame` marks a stored game RUNNING, calls `POST /analyze` outside any transaction (`AnalysisClient`, connect timeout 2 s, read timeout `ANALYSIS_SERVICE_READ_TIMEOUT`, default 180 s), then stores one move evaluation per half-move and one finding per detected motif (with its facts) and marks the game DONE. A rejected game (422) or any error marks it FAILED; a game is never left RUNNING.
 - **Data sources**: the [Lichess API](https://lichess.org/api) for live imports, and the [Lichess open database](https://database.lichess.org/) (CC0) for a seeded demo and the held-out evaluation set, so a demo never depends on live imports.
 
 ## What this project demonstrates
@@ -71,7 +72,7 @@ The evaluation reports, per mode, unsupported claims (including examples that re
 | Database design | Flyway migrations with check constraints, partial indexes, JSONB |
 | REST and service boundaries | backend calls the analysis service over REST; Lichess API integration |
 | Domain-Driven Design | bounded contexts, entities that guard their own invariants |
-| Testing | JUnit 5 unit tests, Testcontainers integration tests on real PostgreSQL; planned: WireMock for Lichess, Cucumber acceptance tests, Playwright end-to-end tests |
+| Testing | JUnit 5 unit tests (Surefire), Testcontainers integration tests (`*IT`, Failsafe) on real PostgreSQL, and an end-to-end test that runs a known game through the backend, the real analysis service and Stockfish; planned: WireMock for Lichess, Cucumber acceptance tests, Playwright end-to-end tests |
 | React + TypeScript | `frontend/` (Phase 3) |
 | CI/CD and containers | GitHub Actions, Docker multi-stage builds, Docker Compose; planned: Kubernetes manifests tested on kind |
 | Applied AI, measured | validated typed claims, and a measured experiment comparing templates with AI explanations (planned) |
@@ -99,7 +100,7 @@ docker compose up -d db
 cd backend && mvn spring-boot:run
 ```
 
-Tests (Docker must be running, Testcontainers starts a throwaway PostgreSQL):
+Backend tests: `mvn test` runs the unit tests; `mvn verify` also runs the integration tests (`*IT`). Docker must be running: Testcontainers starts a throwaway PostgreSQL and builds the analysis service from `analysis-service/Dockerfile` for the end-to-end test (the first build takes a minute or two).
 
 ```bash
 cd backend && mvn verify

@@ -43,7 +43,7 @@ import io.github.gergo019.blindspot.training.DrillRepository;
 @SpringBootTest
 @Testcontainers
 @Transactional
-class SchemaIntegrationTest {
+class SchemaIT {
 
     private static final String FACTS = "{\"motif\":\"HANGING_PIECE\",\"square\":\"e5\"}";
 

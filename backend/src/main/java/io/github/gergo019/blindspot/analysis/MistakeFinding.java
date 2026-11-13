@@ -1,5 +1,8 @@
 package io.github.gergo019.blindspot.analysis;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import io.github.gergo019.blindspot.common.BaseEntity;
 
 import jakarta.persistence.Column;
@@ -35,11 +38,21 @@ public class MistakeFinding extends BaseEntity {
     @Column(name = "detector_version", nullable = false, length = 20)
     private String detectorVersion;
 
+    /** JSON object with the checked facts the finding rests on, as reported by the detector. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(nullable = false)
+    private String facts = "{}";
+
     protected MistakeFinding() {
         // for JPA
     }
 
     public MistakeFinding(MoveEvaluation moveEvaluation, Motif motif, String evidenceLineUci, String detectorVersion) {
+        this(moveEvaluation, motif, evidenceLineUci, detectorVersion, "{}");
+    }
+
+    public MistakeFinding(MoveEvaluation moveEvaluation, Motif motif, String evidenceLineUci, String detectorVersion,
+            String facts) {
         if (!moveEvaluation.isTrainableMistake()) {
             throw new IllegalArgumentException("Findings are only recorded for the user's mistakes and blunders");
         }
@@ -50,6 +63,10 @@ public class MistakeFinding extends BaseEntity {
         this.motif = motif;
         this.evidenceLineUci = evidenceLineUci.strip();
         this.detectorVersion = detectorVersion;
+        if (facts == null || facts.isBlank()) {
+            throw new IllegalArgumentException("Facts must be a JSON object; use \"{}\" for none");
+        }
+        this.facts = facts;
     }
 
     public MoveEvaluation getMoveEvaluation() {
@@ -66,5 +83,9 @@ public class MistakeFinding extends BaseEntity {
 
     public String getDetectorVersion() {
         return detectorVersion;
+    }
+
+    public String getFacts() {
+        return facts;
     }
 }
