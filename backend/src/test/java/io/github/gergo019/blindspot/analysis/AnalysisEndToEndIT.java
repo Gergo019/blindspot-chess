@@ -46,7 +46,7 @@ import tools.jackson.databind.json.JsonMapper;
  * runtime target, with its pinned Stockfish) and PostgreSQL, and the expected
  * motif comes back with a replayable evidence line.
  */
-@SpringBootTest
+@SpringBootTest(properties = "blindspot.lichess.importer.enabled=false")
 @Testcontainers
 class AnalysisEndToEndIT {
 

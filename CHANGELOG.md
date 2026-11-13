@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Lichess import (#5): a background job fetches each Lichess account's newest finished rapid games from the game export API (NDJSON), at most `LICHESS_IMPORT_BATCH_SIZE` per run, and stores them as PENDING; games in progress, other speeds and variants, and games already stored (by Lichess game id) are skipped. Sends an identifying `User-Agent` (`LICHESS_USER_AGENT`) and the optional `LICHESS_API_TOKEN`. `LICHESS_USERNAME` creates the account to import for at startup. Tested against recorded Lichess responses
 - Backend analyses stored games through the analysis service: `AnalysisClient` (RestClient, connect timeout 2 s, configurable read timeout, default 180 s) and `AnalysisService.analyzeGame`, which stores move evaluations and findings with their facts and never leaves a game RUNNING (#4)
 - Flyway `V2`: `facts` JSONB column on `mistake_findings` (#4)
 - End-to-end test: a known game through the backend, the real analysis service (built from its Dockerfile) and Stockfish, asserting the hanging-piece finding and a legal evidence line; the Phase 1 exit criterion (#4)

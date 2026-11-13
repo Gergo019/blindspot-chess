@@ -40,7 +40,7 @@ import io.github.gergo019.blindspot.training.DrillRepository;
  * itself proves that the Flyway migration runs and that Hibernate's schema
  * validation accepts every entity mapping.
  */
-@SpringBootTest
+@SpringBootTest(properties = "blindspot.lichess.importer.enabled=false")
 @Testcontainers
 @Transactional
 class SchemaIT {
