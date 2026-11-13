@@ -46,6 +46,7 @@ These shape design and tests more than any Git convention:
 
 - The README describes how to run the project *today*; a change that alters setup updates it in the same PR.
 - Notable changes go into `CHANGELOG.md` under `Unreleased`.
+- Every PR adds or updates an entry in `docs/devlog.md`.
 - Each finished phase is tagged with [Semantic Versioning](https://semver.org/) (`v0.1.0`, `v0.2.0`, ...) and gets a GitHub Release.
 
 ## Quick reference

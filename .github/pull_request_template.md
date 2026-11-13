@@ -21,6 +21,7 @@ Closes #
 - [ ] No existing Flyway migration was edited
 - [ ] No secrets committed; new settings added to `.env.example`
 - [ ] README / CHANGELOG updated if behaviour or setup changed
+- [ ] Every PR adds or updates an entry in `docs/devlog.md`
 
 ## Screenshots
 
