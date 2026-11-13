@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-13: End-to-end analysis, backend to analysis service (#4 / PR pending)
+## 2026-11-13: End-to-end analysis, backend to analysis service (#4 / PR #21)
 
 **Goal:** The backend analyses a stored game through the analysis service and stores the result; a known game is tested end to end (the Phase 1 exit criterion).
 
@@ -33,7 +33,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - The end-to-end test stored the knight game (`1. e4 e5 2. Nf3 d6 3. Nd4 exd4 0-1`, user White), ran `analyzeGame`, and found: status DONE; 6 move evaluations, all `Stockfish 19` at depth 16; one `HANGING_PIECE` finding on ply 5 with `hanging-0.2`, `movedPiece` knight, evidence starting `e5d4`; the evidence line accepted move by move by the analysis service.
 - Flyway applied V1 and V2 in both integration contexts.
 - The first local run failed to start the context (no `RestClient.Builder` bean); fixed by adding the starter. Before that, a field name clash in the test (`analysisService` for both the container and the service) failed compilation.
-- CI: pending.
+- CI on PR #21, first run green. Backend job **1m33s** (was 27 to 47 s before this PR): 19 unit tests; `AnalysisEndToEndIT` 46.1 s including the analysis image build on the runner; `SchemaIT` 14.0 s. Analysis-service job 1m09s, Compose stack 1m06s (runs after both). Whole run 2m44s (was 2m11s to 2m28s on recent `main` runs).
 
 **Open points / risks:**
 - The backend CI job now builds the analysis image (Stockfish download and pip install) inside `mvn verify`, so it is slower; the Compose job builds the same image again. Caching or sharing the image between jobs would save time.
@@ -41,7 +41,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - Two games analysed at the same time would each start an engine in the analysis service; no concurrency limit yet (noted in #2).
 - `MistakeFinding` still has a constructor without facts (`"{}"`) for existing test data.
 
-**Links:** [#4](https://github.com/Gergo019/blindspot-chess/issues/4), [ADR 0003](decisions/0003-facts-first-explanations.md), [ADR 0004](decisions/0004-hanging-piece-detector.md)
+**Links:** [#4](https://github.com/Gergo019/blindspot-chess/issues/4), [PR #21](https://github.com/Gergo019/blindspot-chess/pull/21), [ADR 0003](decisions/0003-facts-first-explanations.md), [ADR 0004](decisions/0004-hanging-piece-detector.md)
 
 ## 2026-11-13: Hanging-piece detector v0.2 (#3 / PR #20)
 
