@@ -1,5 +1,6 @@
 package io.github.gergo019.blindspot.analysis;
 
+import java.time.Clock;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -42,16 +43,18 @@ public class AnalysisService {
     private final AnalysisClient client;
     private final TransactionTemplate tx;
     private final JsonMapper json;
+    private final Clock clock;
 
     public AnalysisService(GameRepository games, MoveEvaluationRepository evaluations,
             MistakeFindingRepository findings, AnalysisClient client, PlatformTransactionManager transactionManager,
-            JsonMapper json) {
+            JsonMapper json, Clock clock) {
         this.games = games;
         this.evaluations = evaluations;
         this.findings = findings;
         this.client = client;
         this.tx = new TransactionTemplate(transactionManager);
         this.json = json;
+        this.clock = clock;
     }
 
     /**
@@ -62,7 +65,7 @@ public class AnalysisService {
     public AnalysisStatus analyzeGame(long gameId) {
         AnalyzeRequest request = tx.execute(status -> {
             Game game = load(gameId);
-            game.startAnalysis();
+            game.startAnalysis(clock.instant());
             games.save(game);
             return new AnalyzeRequest(game.getPgn(), game.getUserColor().name());
         });

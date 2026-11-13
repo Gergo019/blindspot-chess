@@ -3,6 +3,9 @@ package io.github.gergo019.blindspot.analysis;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
+import java.time.Instant;
+
 import org.junit.jupiter.api.Test;
 
 import io.github.gergo019.blindspot.TestData;
@@ -15,6 +18,8 @@ import io.github.gergo019.blindspot.game.GameEnums.AnalysisStatus;
 class DomainRulesTest {
 
     private static final String FACTS = "{\"motif\":\"HANGING_PIECE\",\"piece\":\"knight\",\"square\":\"e5\"}";
+
+    private static final Instant T0 = Instant.parse("2026-11-13T12:00:00Z");
 
     private final Game game = TestData.game(TestData.lichessAccount(TestData.user("player")), "g1");
     private final MistakeFinding finding = TestData.hangingPiece(TestData.userBlunder(game, 7));
@@ -69,12 +74,53 @@ class DomainRulesTest {
     void analysisFollowsItsLifecycle() {
         assertThatThrownBy(game::completeAnalysis).isInstanceOf(IllegalStateException.class);
 
-        game.startAnalysis();
+        game.startAnalysis(T0);
         game.failAnalysis();
-        game.startAnalysis();   // retry after failure is allowed
+        game.startAnalysis(T0);   // retry after failure is allowed
         game.completeAnalysis();
 
         assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.DONE);
-        assertThatThrownBy(game::startAnalysis).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> game.startAnalysis(T0)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void everyStartIsCountedAndTimestamped() {
+        assertThat(game.getAnalysisAttempts()).isZero();
+        assertThat(game.getAnalysisStartedAt()).isNull();
+
+        game.startAnalysis(T0);
+
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
+        assertThat(game.getAnalysisStartedAt()).isEqualTo(T0);
+    }
+
+    @Test
+    void analysisIsStuckOnlyWhenRunningLongerThanTheTimeout() {
+        Duration timeout = Duration.ofMinutes(30);
+        assertThat(game.isAnalysisStuck(T0.plus(Duration.ofHours(5)), timeout)).isFalse(); // PENDING
+
+        game.startAnalysis(T0);
+
+        assertThat(game.isAnalysisStuck(T0.plus(timeout), timeout)).isFalse();
+        assertThat(game.isAnalysisStuck(T0.plus(timeout).plusSeconds(1), timeout)).isTrue();
+        game.completeAnalysis();
+        assertThat(game.isAnalysisStuck(T0.plus(Duration.ofHours(5)), timeout)).isFalse(); // DONE
+    }
+
+    @Test
+    void stuckAnalysisGoesBackToPendingOnceThenFails() {
+        game.startAnalysis(T0);
+        assertThat(game.recoverStuckAnalysis()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+
+        game.startAnalysis(T0.plus(Duration.ofHours(1)));
+        assertThat(game.recoverStuckAnalysis()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(Game.MAX_ANALYSIS_ATTEMPTS);
+    }
+
+    @Test
+    void onlyARunningAnalysisCanBeRecovered() {
+        assertThatThrownBy(game::recoverStuckAnalysis).isInstanceOf(IllegalStateException.class);
     }
 }

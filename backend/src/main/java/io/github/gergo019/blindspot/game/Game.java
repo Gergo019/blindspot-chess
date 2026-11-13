@@ -1,5 +1,6 @@
 package io.github.gergo019.blindspot.game;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import io.github.gergo019.blindspot.account.ChessAccount;
@@ -75,6 +76,14 @@ public class Game extends BaseEntity {
     @Column(name = "analysis_status", nullable = false, length = 20)
     private AnalysisStatus analysisStatus = AnalysisStatus.PENDING;
 
+    /** Analysis attempts started so far, including a running one. */
+    @Column(name = "analysis_attempts", nullable = false)
+    private int analysisAttempts;
+
+    /** When the latest attempt started; set while RUNNING. */
+    @Column(name = "analysis_started_at")
+    private Instant analysisStartedAt;
+
     protected Game() {
         // for JPA
     }
@@ -91,13 +100,40 @@ public class Game extends BaseEntity {
         this.pgn = pgn;
     }
 
-    // --- analysis lifecycle: PENDING -> RUNNING -> DONE | FAILED, FAILED -> RUNNING (retry) ---
+    // --- analysis lifecycle: PENDING -> RUNNING -> DONE | FAILED, FAILED -> RUNNING (manual retry),
+    // --- RUNNING (stuck) -> PENDING once, then FAILED
 
-    public void startAnalysis() {
+    /**
+     * Attempts a game may use before a stuck analysis marks it FAILED: the
+     * first stuck attempt goes back to PENDING, the second one fails.
+     */
+    public static final int MAX_ANALYSIS_ATTEMPTS = 2;
+
+    public void startAnalysis(Instant now) {
         if (analysisStatus != AnalysisStatus.PENDING && analysisStatus != AnalysisStatus.FAILED) {
             throw new IllegalStateException("Cannot start analysis from status " + analysisStatus);
         }
         analysisStatus = AnalysisStatus.RUNNING;
+        analysisAttempts++;
+        analysisStartedAt = now;
+    }
+
+    /** RUNNING for longer than {@code timeout}: the process that ran it has probably died. */
+    public boolean isAnalysisStuck(Instant now, Duration timeout) {
+        return analysisStatus == AnalysisStatus.RUNNING && analysisStartedAt != null
+                && analysisStartedAt.plus(timeout).isBefore(now);
+    }
+
+    /**
+     * Recovers a stuck analysis: back to PENDING if the game has attempts
+     * left, otherwise FAILED.
+     *
+     * @return the new status
+     */
+    public AnalysisStatus recoverStuckAnalysis() {
+        requireRunning();
+        analysisStatus = analysisAttempts < MAX_ANALYSIS_ATTEMPTS ? AnalysisStatus.PENDING : AnalysisStatus.FAILED;
+        return analysisStatus;
     }
 
     public void completeAnalysis() {
@@ -192,5 +228,13 @@ public class Game extends BaseEntity {
 
     public AnalysisStatus getAnalysisStatus() {
         return analysisStatus;
+    }
+
+    public int getAnalysisAttempts() {
+        return analysisAttempts;
+    }
+
+    public Instant getAnalysisStartedAt() {
+        return analysisStartedAt;
     }
 }
