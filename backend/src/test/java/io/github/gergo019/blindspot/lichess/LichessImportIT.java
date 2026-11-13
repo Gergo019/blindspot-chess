@@ -40,6 +40,7 @@ import io.github.gergo019.blindspot.lichess.LichessGameMapper.SkipReason;
  */
 @SpringBootTest(properties = {
         "blindspot.lichess.importer.enabled=false",
+        "blindspot.analysis.job.enabled=false",
         "blindspot.lichess.importer.batch-size=10",
         "blindspot.lichess.user-agent=blindspot-chess-it" })
 @Testcontainers
