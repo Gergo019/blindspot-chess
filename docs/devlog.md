@@ -32,7 +32,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - `mvn verify` in `maven:3.9-eclipse-temurin-25` with the Docker socket: Surefire 34 unit tests (15 new), Failsafe 5 integration tests (`LichessImportIT` 1, `AnalysisEndToEndIT` 1, `SchemaIT` 3), all green.
 - `LichessImportIT`: first run received 5, imported 3, skipped `NOT_FINISHED=1` (`IVGlNazQ`) and `NOT_RAPID=1` (`v31fmkvX`); the three stored games are PENDING with the right colours. Second run: 0 imported, `ALREADY_IMPORTED=3`. Both requests carried `max=10&perfType=rapid&finished=true&ongoing=false`, the `User-Agent` and `Accept: application/x-ndjson`.
 - Manual smoke test against live Lichess (not part of CI): `docker compose up db backend` with `LICHESS_USERNAME=thibault` and batch size 5. The account was created at startup; 10 s later "5 received, 5 imported, skipped {}"; all five rows PENDING, with colour, result, `600+0` and the opening name.
-- CI on PR #27: see below.
+- CI on PR #27, first run green, **3m09s** in all (#21's last run on `main`: 2m58s). Backend job 1m28s: 34 unit tests; `LichessImportIT` 2.4 s, `SchemaIT` 16.3 s, `AnalysisEndToEndIT` 49.4 s (includes the analysis image build). Analysis-service job 1m05s; Compose stack 1m35s (runs after both).
 
 **Open points / risks:**
 - No sign-up or account API yet; one account through `LICHESS_USERNAME`.
