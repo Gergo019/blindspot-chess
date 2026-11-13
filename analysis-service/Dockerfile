@@ -1,5 +1,3 @@
-FROM python:3.15-slim
-
 # ---- Pinned Stockfish: one official release binary, checksum-verified ----
 # Stockfish 19 ships "universal" binaries that detect the CPU's features at
 # runtime, so the same binary runs on any x86-64 CI runner. CI builds for
