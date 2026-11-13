@@ -25,6 +25,8 @@ server:
 
 blindspot:
   analysis-service-url: ${ANALYSIS_SERVICE_URL:http://localhost:8000}
+  # One call analyses a whole game at a fixed depth; long games take minutes.
+  analysis-service-read-timeout: ${ANALYSIS_SERVICE_READ_TIMEOUT:180s}
   lichess:
     base-url: https://lichess.org
     api-token: ${LICHESS_API_TOKEN:}

@@ -31,6 +31,7 @@ services:
       DB_USERNAME: ${POSTGRES_USER:-blindspot}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-blindspot}
       ANALYSIS_SERVICE_URL: http://analysis-service:8000
+      ANALYSIS_SERVICE_READ_TIMEOUT: ${ANALYSIS_SERVICE_READ_TIMEOUT:-180s}
       LICHESS_API_TOKEN: ${LICHESS_API_TOKEN:-}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
