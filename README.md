@@ -89,7 +89,7 @@ docker compose up --build
 | Service | URL |
 |---|---|
 | Backend | http://localhost:8080/health |
-| Analysis service | http://localhost:8000/health (also reports whether Stockfish is available) |
+| Analysis service | http://localhost:8000/health (reports the pinned Stockfish version and depth); `POST /analyze`, see [analysis-service](analysis-service/README.md) |
 | PostgreSQL | `localhost:5432` (db/user/password from `.env`) |
 
 Run only the database in Docker and the backend from your IDE:
@@ -103,6 +103,12 @@ Tests (Docker must be running, Testcontainers starts a throwaway PostgreSQL):
 
 ```bash
 cd backend && mvn verify
+```
+
+Analysis-service tests run inside its Docker image, with the same pinned Stockfish as production:
+
+```bash
+cd analysis-service && docker build --target test -t analysis-test . && docker run --rm analysis-test
 ```
 
 ## Data model

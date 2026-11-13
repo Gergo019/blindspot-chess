@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Analysis service `POST /analyze`: evaluates every half-move of one finished game with Stockfish and classifies it as BEST, GOOD, INACCURACY, MISTAKE or BLUNDER by the drop in winning chances (Lichess formula and thresholds); rejects unfinished, illegal or over-long games with 422 (#2)
+- Engine settings `ENGINE_DEPTH`, `ENGINE_THREADS`, `ENGINE_HASH_MB`, `STOCKFISH_PATH`; `GET /health` reports the engine name, version and depth (#2)
+- Analysis-service test suite (pytest), run inside the Docker image in CI (#2)
+- `docs/devlog.md`, an engineering log; every PR adds or updates an entry
 - Monorepo layout: `backend/`, `analysis-service/`, `frontend/` (placeholder)
 - Docker Compose with PostgreSQL 17, the backend and the analysis service (Stockfish installed in its image)
 - Spring Boot 4.1 backend skeleton with `GET /health` reporting database status
@@ -16,3 +20,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Pattern counting helper: a motif counts at most once per game
 - Transfer drills record the puzzle rating, so transfer can be measured over puzzles of comparable difficulty
 - GitHub Actions CI, Dependabot, contribution rules, PR and issue templates, decision records
+
+### Changed
+
+- The analysis-service image uses one pinned, checksum-verified official Stockfish 19 release binary instead of the Debian package; Stockfish runs single-threaded with a fixed hash and depth for reproducible results (#2)
