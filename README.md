@@ -4,7 +4,7 @@
 
 BlindSpot finds a mistake you keep making in your own games, lets you practise it on the positions where it happened, and then checks whether the lesson carries over to positions you have never seen.
 
-> Status: **Phase 1, foundations** (schema, services, CI). No coaching features yet.
+> Status: **Phase 1, pipeline**. Recent Lichess rapid games are imported and analysed in the background (Stockfish evaluations and hanging-piece findings stored in PostgreSQL); seeded demo data (#23) is still open. No coaching screens yet.
 
 ## The coaching loop
 
@@ -63,6 +63,7 @@ The evaluation reports, per mode, unsupported claims (including examples that re
 - **analysis-service** owns chess knowledge: engine analysis, motif detection, fact extraction and explanation verification. It is stateless; the backend is its only caller. Why Python: [ADR 0002](docs/decisions/0002-python-analysis-service.md).
 - **backend → analysis-service** is real and end-to-end tested: `AnalysisService.analyzeGame` marks a stored game RUNNING, calls `POST /analyze` outside any transaction (`AnalysisClient`, connect timeout 2 s, read timeout `ANALYSIS_SERVICE_READ_TIMEOUT`, default 180 s), then stores one move evaluation per half-move and one finding per detected motif (with its facts) and marks the game DONE. A rejected game (422) or any error marks it FAILED; a game is never left RUNNING.
 - **Lichess → backend** is real: `LichessImportJob` runs every `LICHESS_IMPORT_INTERVAL` (default 1 h) for each Lichess account and asks the [game export](https://lichess.org/api#tag/games/GET/api/games/user/{username}) for the newest `LICHESS_IMPORT_BATCH_SIZE` (default 20) finished rapid games as NDJSON. Games in progress, other speeds, other variants and games already stored (same Lichess game id) are skipped; the rest are stored as PENDING for analysis. Until there is sign-up, `LICHESS_USERNAME` names the one account to import for.
+- **Background analysis**: `AnalysisJob` runs every `ANALYSIS_INTERVAL` (default 30 s). It takes the oldest PENDING games, at most `ANALYSIS_BATCH_SIZE` (10) per run, and analyses them `ANALYSIS_WORKERS` at a time (default 1: each analysis is one single-threaded Stockfish). A game stuck in RUNNING for longer than `ANALYSIS_STUCK_AFTER` (30 min; checked at startup and on each run) goes back to PENDING once, and is marked FAILED if it gets stuck again. FAILED games stay FAILED, with the reason in the log.
 - **Data sources**: the [Lichess API](https://lichess.org/api) for live imports, and the [Lichess open database](https://database.lichess.org/) (CC0) for a seeded demo and the held-out evaluation set, so a demo never depends on live imports.
 
 ## What this project demonstrates
@@ -94,7 +95,7 @@ docker compose up --build
 | Analysis service | http://localhost:8000/health (reports the pinned Stockfish version and depth); `POST /analyze`, see [analysis-service](analysis-service/README.md) |
 | PostgreSQL | `localhost:5432` (db/user/password from `.env`) |
 
-To import your own games, set `LICHESS_USERNAME` in `.env` before starting: about 10 seconds after startup the backend fetches your newest finished rapid games from Lichess and stores them, then repeats every hour. No token is needed for public games; `LICHESS_API_TOKEN` only raises the rate limit.
+To import your own games, set `LICHESS_USERNAME` in `.env` before starting: about 10 seconds after startup the backend fetches your newest finished rapid games from Lichess and stores them, then repeats every hour. The analysis job then analyses them one at a time; a rapid game takes 5 to 10 seconds. No token is needed for public games; `LICHESS_API_TOKEN` only raises the rate limit.
 
 Run only the database in Docker and the backend from your IDE:
 
@@ -127,7 +128,7 @@ users ──< chess_accounts ──< games ──< move_evaluations ──< mist
 
 ## Roadmap
 
-- [ ] **Phase 1, pipeline**: background import of recent completed Lichess rapid games (bounded, deduplicated by game id), `POST /analyze` with pinned Stockfish, seeded demo data from the open database. **Done when** CI sends one known finished game through backend → analysis service → Stockfish and asserts the expected motif comes back with a replayable line.
+- [ ] **Phase 1, pipeline**: background import of recent completed Lichess rapid games (bounded, deduplicated by game id) ✓, `POST /analyze` with pinned Stockfish ✓, background analysis of imported games ✓, seeded demo data from the open database (#23). **Done when** CI sends one known finished game through backend → analysis service → Stockfish and asserts the expected motif comes back with a replayable line.
 - [ ] **Phase 2, findings**: detectors for the two motifs with evidence lines, the pattern report and its evidence threshold
 - [ ] **Phase 3, practice**: board-first React screen, own-game and transfer drills, Playwright tests
 - [ ] **Phase 4, explanations**: typed claims and templates, then the `LLM_FREE` / `LLM_FACTS` experiment and its evaluation report
