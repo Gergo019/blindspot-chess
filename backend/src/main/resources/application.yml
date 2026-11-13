@@ -28,5 +28,14 @@ blindspot:
   # One call analyses a whole game at a fixed depth; long games take minutes.
   analysis-service-read-timeout: ${ANALYSIS_SERVICE_READ_TIMEOUT:180s}
   lichess:
-    base-url: https://lichess.org
+    base-url: ${LICHESS_BASE_URL:https://lichess.org}
     api-token: ${LICHESS_API_TOKEN:}
+    # Lichess answers the game export with a 404 page unless the client identifies itself.
+    user-agent: ${LICHESS_USER_AGENT:blindspot-chess (+https://github.com/Gergo019/blindspot-chess)}
+    # The Lichess account to import games for (until there is sign-up). Empty: no account.
+    username: ${LICHESS_USERNAME:}
+    importer:
+      enabled: ${LICHESS_IMPORT_ENABLED:true}
+      # Newest games requested per account and run; older ones are not fetched.
+      batch-size: ${LICHESS_IMPORT_BATCH_SIZE:20}
+      interval: ${LICHESS_IMPORT_INTERVAL:1h}

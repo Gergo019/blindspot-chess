@@ -9,5 +9,7 @@ public interface ChessAccountRepository extends JpaRepository<ChessAccount, Long
 
     List<ChessAccount> findByUserId(Long userId);
 
+    List<ChessAccount> findByPlatform(ChessPlatform platform);
+
     Optional<ChessAccount> findByPlatformAndPlatformUsername(ChessPlatform platform, String platformUsername);
 }
