@@ -34,9 +34,10 @@ Response (shortened):
   ],
   "findings": [
     { "ply": 5, "motif": "HANGING_PIECE",
-      "evidenceLineUci": "e5d4 c2c3 d6d5 c3d4",
-      "detectorVersion": "hanging-0.1",
-      "facts": { "piece": "knight", "square": "d4", "capturedBy": "pawn", "materialLost": 2 } }
+      "evidenceLineUci": "e5d4 c2c3 d6d5 c3d4 d5e4 d1b3",
+      "detectorVersion": "hanging-0.2",
+      "facts": { "piece": "knight", "square": "d4", "capturedBy": "pawn", "materialLost": 3,
+                 "movedPiece": "knight", "movedFrom": "f3", "movedTo": "d4" } }
   ]
 }
 ```
@@ -48,7 +49,7 @@ Response (shortened):
 - **The final move:** after checkmate, `scoreAfter` is `{ "mate": 0 }`, meaning the side to move is mated (the Lichess convention). After stalemate or another draw by the rules (insufficient material, 75-move rule, fivefold repetition) it is `{ "cp": 0 }`. No search runs on a finished position.
 - **Classification** is by the drop in the mover's winning chances, not raw centipawns, so moves in already-won or already-lost positions are not flagged. Formula and thresholds follow Lichess (links in [`app/classify.py`](app/classify.py)): a drop of at least 0.1 is an `INACCURACY`, 0.2 a `MISTAKE`, 0.3 a `BLUNDER`. `BEST` means the engine's best move was played; `GOOD` means a drop below 0.1. Mate scores count as winning chances of +1 / -1.
 - **Findings** are motifs behind the user's own moves, each with an evidence line the player can replay: the engine's follow-up after the move, in UCI. `facts` holds the checked facts the finding rests on (the start of the typed claims in [ADR 0003](../docs/decisions/0003-facts-first-explanations.md)); `detectorVersion` says which rules produced it. `moves` is unchanged by detection.
-- **`HANGING_PIECE`** ([ADR 0004](../docs/decisions/0004-hanging-piece-detector.md)): the user's move is a `MISTAKE` or `BLUNDER`, the engine's reply captures one of the user's knights, bishops, rooks or queens, the user is at least 2 points down (P=1, N=B=3, R=5, Q=9) after up to 4 plies of the engine's line, and that line does not mate. `piece` is the captured piece (not necessarily the one that moved), `square` where it is captured, `capturedBy` the capturing piece, `materialLost` the net loss in points.
+- **`HANGING_PIECE`** ([ADR 0004](../docs/decisions/0004-hanging-piece-detector.md)): the user's move is a `MISTAKE` or `BLUNDER`, the engine's reply captures one of the user's knights, bishops, rooks or queens, the user is at least 2 points down (P=1, N=B=3, R=5, Q=9) at the end of the window (4 plies of the engine's line, extended while captures continue, up to 8), and there is no forced mate against the user (no mate in the window and no mate score after the move). `piece` is the captured piece, `square` where it is captured, `capturedBy` the capturing piece, `materialLost` the net loss in points; `movedPiece`, `movedFrom` and `movedTo` describe the user's move, so in a discovered loss `movedPiece` differs from `piece`.
 - **Rejected with 422** (completed games only): a result of `*` or no result, illegal moves, no moves, non-standard variants, a result that contradicts a checkmate on the board, and games longer than 300 half-moves.
 - **503** if Stockfish cannot be started.
 

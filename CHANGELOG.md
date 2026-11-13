@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
-- Hanging-piece detector v0.1 (`hanging-0.1`): `POST /analyze` returns `findings` with the motif, an evidence line in UCI and facts (piece, square, capturing piece, material lost) for user moves that leave a knight, bishop, rook or queen to be won ([ADR 0004](docs/decisions/0004-hanging-piece-detector.md)) (#3)
+- Hanging-piece detector (`hanging-0.2`): `POST /analyze` returns `findings` with the motif, an evidence line in UCI and facts (piece, square, capturing piece, material lost, and the moved piece with its from and to squares) for user moves that leave a knight, bishop, rook or queen to be won. The material window extends while captures continue (up to 8 plies), and a forced mate against the user, even beyond the window, means no finding ([ADR 0004](docs/decisions/0004-hanging-piece-detector.md)) (#3)
 - Analysis service `POST /analyze`: evaluates every half-move of one finished game with Stockfish and classifies it as BEST, GOOD, INACCURACY, MISTAKE or BLUNDER by the drop in winning chances (Lichess formula and thresholds); rejects unfinished, illegal or over-long games with 422 (#2)
 - Engine settings `ENGINE_DEPTH`, `ENGINE_THREADS`, `ENGINE_HASH_MB`, `STOCKFISH_PATH`; `GET /health` reports the engine name, version and depth (#2)
 - Analysis-service test suite (pytest), run inside the Docker image in CI (#2)
