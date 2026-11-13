@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-13: Hanging-piece detector v0.1 (#3 / PR pending)
+## 2026-11-13: Hanging-piece detector v0.1 (#3 / PR #20)
 
 **Goal:** Detect when a user's move leaves one of their pieces to be won, with an evidence line the player can replay.
 
@@ -28,7 +28,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - While writing the mate test, the first hand-made position was wrong (after Qa5 the queen still covered e1, so Rxe1 was not mate); the position was checked with python-chess and replaced with Qa2. The detector was right.
 - In the Docker `test` image: 81 passed on arm64 and on amd64, including the existing determinism test.
 - Real findings, identical on amd64 and arm64: `1. e4 e5 2. Nf3 d6 3. Nd4 exd4` gives ply 5 (Nd4, BLUNDER), evidence `e5d4 c2c3 d6d5 c3d4`, knight on d4 taken by a pawn, materialLost 2 (White wins a pawn back in the line). `1. e4 d5 2. Qg4 Bxg4` gives ply 3 (Qg4, BLUNDER), evidence `c8g4 e4e5 b8c6 f1b5`, queen on g4 taken by a bishop, materialLost 9.
-- CI: pending.
+- CI on PR #20, first run green: 81 passed in the image on the runner (amd64), backend 15 passed, Compose stack healthy.
 
 **Open points / risks:**
 - **Net loss counts material won back in the window.** The hung knight above scores exactly 2 because the engine line regains a pawn; a knight lost for two pawns would not fire. Revisit the threshold (or measure the piece's value instead of the net) with real games.
@@ -37,7 +37,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - **Hopeless positions:** a piece hung when the game is already lost (or still won) is usually classified GOOD, so no finding. Intended by the classification design, but a coach might still want to mention it.
 - **Promotions in the window** count against the user like any other material change.
 
-**Links:** [#3](https://github.com/Gergo019/blindspot-chess/issues/3), [ADR 0004](decisions/0004-hanging-piece-detector.md), [ADR 0003](decisions/0003-facts-first-explanations.md)
+**Links:** [#3](https://github.com/Gergo019/blindspot-chess/issues/3), [PR #20](https://github.com/Gergo019/blindspot-chess/pull/20), [ADR 0004](decisions/0004-hanging-piece-detector.md), [ADR 0003](decisions/0003-facts-first-explanations.md)
 
 ## 2026-11-13: Post-merge cleanup (PR #17)
 
