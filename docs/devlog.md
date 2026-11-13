@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-13: POST /analyze with pinned Stockfish (#2 / PR pending)
+## 2026-11-13: POST /analyze with pinned Stockfish (#2 / PR #16)
 
 **Goal:** The analysis service evaluates one finished game with a pinned, reproducible Stockfish and classifies every half-move.
 
@@ -39,7 +39,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - UCI traffic logged in the image: `setoption name Hash value 64`, then `ucinewgame`, `isready`, `position`, `go depth 16` for every position. `Threads` is not sent because python-chess skips options equal to the engine default (1).
 - The Blackburne Shilling game analysed with the x86-64 and the arm64 binary gave byte-identical JSON.
 - Runtime image smoke test: `/health` reports Stockfish 19, depth 16; `POST /analyze` returns the contract; an unfinished game returns 422.
-- CI: pending.
+- CI on PR #16, first run green: the runner's image build verified the x86-64 checksum (`/tmp/stockfish.tar.gz: OK`); `Analysis service (install + smoke test)` ran 55 passed in the image; `Backend (build + tests)` passed; `Docker Compose stack` started and `/health` reported Stockfish 19, depth 16.
 
 **Open points / risks:**
 - Not yet measured: time per position at depth 16, single-threaded. The whole test suite, including nine engine analyses of short games, runs in about 12 s in the image; a long game will take much longer. Fine for a background job; the backend client needs a generous timeout.
@@ -48,7 +48,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - The first move from the starting position can already be a MISTAKE (1. f3 drops about 0.2 winning chances at depth 16). That is the formula working as designed, but worth reviewing with real games.
 - Upgrading Stockfish changes evaluations; stored rows keep their engine version.
 
-**Links:** [#2](https://github.com/Gergo019/blindspot-chess/issues/2), [ADR 0002](decisions/0002-python-analysis-service.md)
+**Links:** [#2](https://github.com/Gergo019/blindspot-chess/issues/2), [PR #16](https://github.com/Gergo019/blindspot-chess/pull/16), [ADR 0002](decisions/0002-python-analysis-service.md)
 
 ## 2026-11-12: Project foundation (PR #1)
 
