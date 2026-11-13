@@ -32,7 +32,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   | `1. e4 d5 2. Qg4 Bxg4`, ply 3 (Qg4, BLUNDER, score after -955 cp) | evidence `c8g4 e4e5 b8c6 f1b5`, materialLost 9 | unchanged; movedPiece queen d1→g4 |
 
   The knight finding changed because ply 4 (`c3xd4`) was a capture, so the window extended: `d5xe4` on ply 5 is another capture, `Qb3` on ply 6 ends it. With the pawn trade finished, the loss is the whole knight. The queen line's ply 4 is quiet, so its window stays at 4. Neither game has a mate score, so the new mate rule did not affect them.
-- CI: pending.
+- CI on PR #20 after the v0.2 commits, first run green: 94 passed in the image on the runner (amd64), backend and Compose stack green.
 
 **Open points / risks:**
 - Open questions (a) and (b) in ADR 0004.
