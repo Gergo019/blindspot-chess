@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Backend analyses stored games through the analysis service: `AnalysisClient` (RestClient, connect timeout 2 s, configurable read timeout, default 180 s) and `AnalysisService.analyzeGame`, which stores move evaluations and findings with their facts and never leaves a game RUNNING (#4)
+- Flyway `V2`: `facts` JSONB column on `mistake_findings` (#4)
+- End-to-end test: a known game through the backend, the real analysis service (built from its Dockerfile) and Stockfish, asserting the hanging-piece finding and a legal evidence line; the Phase 1 exit criterion (#4)
 - Hanging-piece detector (`hanging-0.2`): `POST /analyze` returns `findings` with the motif, an evidence line in UCI and facts (piece, square, capturing piece, material lost, and the moved piece with its from and to squares) for user moves that leave a knight, bishop, rook or queen to be won. The material window extends while captures continue (up to 8 plies), and a forced mate against the user, even beyond the window, means no finding ([ADR 0004](docs/decisions/0004-hanging-piece-detector.md)) (#3)
 - Analysis service `POST /analyze`: evaluates every half-move of one finished game with Stockfish and classifies it as BEST, GOOD, INACCURACY, MISTAKE or BLUNDER by the drop in winning chances (Lichess formula and thresholds); rejects unfinished, illegal or over-long games with 422 (#2)
 - Engine settings `ENGINE_DEPTH`, `ENGINE_THREADS`, `ENGINE_HASH_MB`, `STOCKFISH_PATH`; `GET /health` reports the engine name, version and depth (#2)
@@ -24,6 +27,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- Backend tests split: unit tests (`*Test`) with Surefire, integration tests (`*IT`) with Failsafe in `mvn verify`; `SchemaIntegrationTest` renamed to `SchemaIT` (#4)
 - Backend on Java 25 LTS everywhere: compiler target, CI, Maven build image (`maven:3.9-eclipse-temurin-25`) and runtime image (`eclipse-temurin:25-jre`)
 - Dependabot opens one grouped PR per ecosystem; Java and Python base-image upgrades are done by hand
 - The analysis-service image uses one pinned, checksum-verified official Stockfish 19 release binary instead of the Debian package; Stockfish runs single-threaded with a fixed hash and depth for reproducible results (#2)

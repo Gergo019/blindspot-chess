@@ -4,6 +4,45 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-13: End-to-end analysis, backend to analysis service (#4 / PR pending)
+
+**Goal:** The backend analyses a stored game through the analysis service and stores the result; a known game is tested end to end (the Phase 1 exit criterion).
+
+**Changes:**
+- `backend/.../analysis/AnalyzeApi.java`: records mirroring the `/analyze` JSON (request, response, engine, moves, scores, findings, facts).
+- `backend/.../analysis/AnalysisClient.java`, `AnalysisClientConfig.java`, `AnalysisFailedException.java`: RestClient against `blindspot.analysis-service-url`; connect timeout 2 s, read timeout `blindspot.analysis-service-read-timeout` (env `ANALYSIS_SERVICE_READ_TIMEOUT`, default 180 s); any error status, connection failure or timeout becomes `AnalysisFailedException` with the status and the service's message.
+- `backend/.../analysis/AnalysisService.java`: `analyzeGame(gameId)` in three steps: short transaction (load, `startAnalysis()`, save); the HTTP call outside any transaction; short transaction (one `MoveEvaluation` per ply with `EngineRun("Stockfish 19", 16)`, one `MistakeFinding` per finding with its facts as JSON, `completeAnalysis()`). Any failure in the call or the store marks the game FAILED in a third transaction and logs the reason.
+- `backend/src/main/resources/db/migration/V2__mistake_finding_facts.sql`: `facts JSONB NOT NULL DEFAULT '{}'` on `mistake_findings`; `MistakeFinding.facts` mapped like `Explanation.facts`. V1 untouched.
+- `backend/pom.xml`: `spring-boot-starter-restclient`; `maven-failsafe-plugin` for `*IT`.
+- Tests: `AnalysisClientTest` (4) and `AnalysisServiceTest` (3) with `MockRestServiceServer`, no Docker; `AnalysisEndToEndIT` (Testcontainers: PostgreSQL and the analysis service built from `../analysis-service/Dockerfile`, runtime target); `SchemaIntegrationTest` renamed to `SchemaIT`.
+- `application.yml`, `docker-compose.yml`, `.env.example`: the read-timeout setting. `README.md`, `CHANGELOG.md`.
+
+**Decisions:**
+- **HTTP call outside transactions,** between two short ones. Reason: one call can take minutes; holding a database transaction (and a pooled connection) that long is wasteful and risks timeouts. Rejected: `@Transactional` on the whole method.
+- **FAILED on any error, in its own transaction,** including errors while storing (for example a classification the backend does not know). Reason: never leave a game RUNNING. The game can be retried from FAILED.
+- **A finding for a move that is not the user's MISTAKE or BLUNDER is skipped with a warning,** not stored. The analysis service never sends one; `MistakeFinding` would reject it anyway.
+- **Engine version stored as name and version together** (`"Stockfish 19"`), matching the column's example in V1.
+- **Facts stored as the JSON the detector reported,** serialised with Spring Boot's Jackson 3 `JsonMapper`, so new fact fields need no migration.
+- **`spring-boot-starter-restclient` added.** Reason: in Spring Boot 4 the auto-configured `RestClient.Builder` is its own module; without it the context does not start. Rejected: `RestClient.builder()` by hand (would bypass Boot's JSON configuration).
+- **JDK `HttpClient` request factory** for the timeouts (`JdkClientHttpRequestFactory`). Reason: plain Spring Framework API, no extra HTTP library.
+- **Evidence-line legality through a second call to the analysis service.** Reason: no maintained Java chess library is published on Maven Central (`chesslib` is on JitPack only; the libraries on Central are small or unmaintained). The test sends the game up to ply 5 plus the evidence line, in UCI, as a PGN; the service rejects any illegal move with 422, and the test asserts that every move comes back in order. The PGN gets a draw result only because the service requires a finished result; it is not a real game.
+- **`TARGETARCH` passed as a build argument** when Testcontainers builds the analysis image, from the Docker host's architecture. Reason: only BuildKit sets `TARGETARCH` automatically, and a build through the Docker API (as Testcontainers does) may use the classic builder; without the argument the Dockerfile falls back to the x86-64 Stockfish, which does not run natively on Apple Silicon. Passing it works with either builder. (Not confirmed which builder Testcontainers used locally: it does not log build steps.)
+
+**Verification:**
+- Locally with Maven in `maven:3.9-eclipse-temurin-25` (no JDK on the host) and the Docker socket for Testcontainers: `mvn verify` green. Surefire: 19 unit tests (including the 7 new ones). Failsafe: `AnalysisEndToEndIT` 1 and `SchemaIT` 3.
+- The end-to-end test stored the knight game (`1. e4 e5 2. Nf3 d6 3. Nd4 exd4 0-1`, user White), ran `analyzeGame`, and found: status DONE; 6 move evaluations, all `Stockfish 19` at depth 16; one `HANGING_PIECE` finding on ply 5 with `hanging-0.2`, `movedPiece` knight, evidence starting `e5d4`; the evidence line accepted move by move by the analysis service.
+- Flyway applied V1 and V2 in both integration contexts.
+- The first local run failed to start the context (no `RestClient.Builder` bean); fixed by adding the starter. Before that, a field name clash in the test (`analysisService` for both the container and the service) failed compilation.
+- CI: pending.
+
+**Open points / risks:**
+- The backend CI job now builds the analysis image (Stockfish download and pip install) inside `mvn verify`, so it is slower; the Compose job builds the same image again. Caching or sharing the image between jobs would save time.
+- Nothing calls `analyzeGame` yet; the background job that picks PENDING games comes with the Lichess import (#5).
+- Two games analysed at the same time would each start an engine in the analysis service; no concurrency limit yet (noted in #2).
+- `MistakeFinding` still has a constructor without facts (`"{}"`) for existing test data.
+
+**Links:** [#4](https://github.com/Gergo019/blindspot-chess/issues/4), [ADR 0003](decisions/0003-facts-first-explanations.md), [ADR 0004](decisions/0004-hanging-piece-detector.md)
+
 ## 2026-11-13: Hanging-piece detector v0.2 (#3 / PR #20)
 
 **Goal:** Address the open points of v0.1 before merging: mates beyond the window, exchanges cut off by the window, and facts that name the moved piece.
