@@ -9,7 +9,7 @@ BlindSpot needs a web application (accounts, imports, drills, REST API) and ches
 
 ## Decision
 
-- One repository with `backend/` (Java 21, Spring Boot), `analysis-service/` (Python, FastAPI) and `frontend/` (React, TypeScript).
+- One repository with `backend/` (Java 25, Spring Boot), `analysis-service/` (Python, FastAPI) and `frontend/` (React, TypeScript).
 - The backend owns the domain and all persistence. The analysis service is stateless and is called only by the backend, over REST.
 - Docker Compose runs the whole stack locally and in CI.
 

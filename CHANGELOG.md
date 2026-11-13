@@ -23,4 +23,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- Backend on Java 25 LTS everywhere: compiler target, CI, Maven build image (`maven:3.9-eclipse-temurin-25`) and runtime image (`eclipse-temurin:25-jre`)
+- Dependabot opens one grouped PR per ecosystem; Java and Python base-image upgrades are done by hand
 - The analysis-service image uses one pinned, checksum-verified official Stockfish 19 release binary instead of the Debian package; Stockfish runs single-threaded with a fixed hash and depth for reproducible results (#2)
+
+### Fixed
+
+- Analysis-service CI job ran leftover host steps with an unpinned Ubuntu Stockfish after a merge; it now only builds and tests the image
+- Stray `FROM python:3.15-slim` line at the top of the analysis-service Dockerfile

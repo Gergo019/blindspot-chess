@@ -49,7 +49,7 @@ The evaluation reports, per mode, unsupported claims (including examples that re
 ```
 ┌──────────────────────┐   REST   ┌──────────────────────────┐   REST   ┌────────────────────────────┐
 │ frontend (Phase 3)   ├─────────►│ backend                  ├─────────►│ analysis-service           │
-│ React + TypeScript   │          │ Java 21, Spring Boot 4.1 │          │ Python, FastAPI            │
+│ React + TypeScript   │          │ Java 25, Spring Boot 4.1 │          │ Python, FastAPI            │
 │ board-first UI       │          │ import, findings, drills │          │ python-chess + Stockfish   │
 └──────────────────────┘          └───────────┬──────────────┘          │ motif detection, verifier  │
                                               │ JPA + Flyway            └────────────────────────────┘
@@ -79,7 +79,7 @@ The evaluation reports, per mode, unsupported claims (including examples that re
 
 ## Getting started
 
-Prerequisites: Docker with Docker Compose v2. For working on the backend outside Docker: Java 21 and Maven 3.9+.
+Prerequisites: Docker with Docker Compose v2. For working on the backend outside Docker: Java 25 and Maven 3.9+.
 
 ```bash
 cp .env.example .env

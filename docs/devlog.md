@@ -4,6 +4,40 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-13: Post-merge cleanup (PR #17)
+
+**Goal:** Repair what the dependency merges and the PR #16 conflict resolution left behind, and put the backend on one Java LTS.
+
+**What went wrong:**
+- Dependabot opened ten separate PRs (#6 to #15), one per dependency, and they were merged before PR #16. Two of them touched files that #16 also changed (`.github/workflows/ci.yml` and `analysis-service/Dockerfile`).
+- Resolving the resulting conflict kept both sides. The analysis-service CI job ran the new Docker-based tests and then the old host steps as well (a second checkout, `setup-python`, `apt-get install stockfish`, `pip install ... httpx`, a health check on the host), so CI also exercised an unpinned Stockfish from Ubuntu. The Dockerfile kept a stray first line `FROM python:3.15-slim`: an unused build stage, harmless at build time but misleading.
+- The Java images drifted to non-LTS versions on both sides: `maven:3.9-eclipse-temurin-26` to build and `eclipse-temurin:24-jre` to run, while `pom.xml` and CI compiled for Java 21. CI stayed green, which hid the mismatch.
+
+**Changes:**
+- `.github/workflows/ci.yml`: the analysis-service job is only `actions/checkout@v7`, build `--target test`, run. Job name unchanged (required check). Backend job on `java-version: "25"`.
+- `analysis-service/Dockerfile`: stray `FROM python:3.15-slim` removed; runtime stays on `python:3.13-slim`.
+- Java 25 LTS everywhere: `<java.version>25</java.version>` in `backend/pom.xml`, `maven:3.9-eclipse-temurin-25` (build) and `eclipse-temurin:25-jre` (runtime) in `backend/Dockerfile`, `README.md`, [ADR 0001](decisions/0001-monorepo-and-service-split.md). The 2026-11-12 entry below keeps "Java 21" as history, annotated.
+- `.github/dependabot.yml`: one grouped PR per ecosystem (`groups: all: patterns: ["*"]`); for docker, major updates of `eclipse-temurin` and `maven` and minor and major updates of `python` are ignored.
+- `CHANGELOG.md` under Unreleased.
+
+**Decisions:**
+- **Java 25 LTS** for compile, test, build image and runtime image. Reason: one LTS version end to end; 24 and 26 are non-LTS releases with short support. Rejected: staying on Java 21 (older LTS, and the merged images had already moved past it) and following Dependabot to each new feature release.
+- **Java and Python upgrades by hand.** Reason: a base-image upgrade changes the platform the tests ran on and deserves its own PR and devlog entry. Rejected: letting Dependabot propose them (that is how 24, 26 and 3.15 arrived).
+- **Grouped Dependabot PRs**, one per ecosystem. Reason: fewer PRs, merged as one unit, and fewer chances for overlapping changes to conflict with feature branches. Rejected: ungrouped PRs.
+- **Python stays on 3.13**, the version all analysis-service tests ran on.
+
+**Verification:**
+- Locally: the backend image builds with `maven:3.9-eclipse-temurin-25`; it runs on Temurin 25.0.5 LTS; the compiled classes are class file version 69 (Java 25).
+- CI on PR #17, first run green. The backend job ran on Temurin 25.0.5: 15 tests, 0 failures, 0 skipped, the same test classes and timings as the last `main` run on Java 21 (`SchemaIntegrationTest` 14.69 s vs 14.94 s). The analysis-service job ran only checkout, image build and pytest in the image. The Compose stack reported Stockfish 19, depth 16, and database UP.
+- One difference on Java 25, a warning only: JNA (`jna-5.18.1`, used by Testcontainers to talk to Docker) calls a restricted method (`System::load`) and the JVM suggests `--enable-native-access=ALL-UNNAMED`. The existing warnings (Mockito's dynamic agent, the intended duplicate-key violation in a constraint test) are unchanged.
+
+**Open points / risks:**
+- Dependabot reads a Docker tag's leading number as its version. For `maven:3.9-eclipse-temurin-25` that is the Maven version (3.9), not the JDK, so ignoring major updates of `maven` may not stop a JDK change in the tag suffix (the earlier `-21` to `-26` bump changed only the suffix). Watch the next docker PR; if it proposes a new JDK suffix, add an explicit `versions` ignore.
+- Review Dependabot PRs before merging when a feature branch touches the same files; rebase the feature branch instead of merging both sides.
+- Java 25 warns that restricted native calls (JNA in the tests) will be blocked in a future release. Not urgent; when it matters, pass `--enable-native-access=ALL-UNNAMED` to the test JVM (Surefire `argLine`) or follow a Testcontainers/JNA update.
+
+**Links:** [PR #17](https://github.com/Gergo019/blindspot-chess/pull/17), [PR #16](https://github.com/Gergo019/blindspot-chess/pull/16), Dependabot PRs [#6](https://github.com/Gergo019/blindspot-chess/pull/6) to [#15](https://github.com/Gergo019/blindspot-chess/pull/15)
+
 ## 2026-11-13: POST /analyze with pinned Stockfish (#2 / PR #16)
 
 **Goal:** The analysis service evaluates one finished game with a pinned, reproducible Stockfish and classifies every half-move.
@@ -64,7 +98,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 
 **Changes:**
 - Pivot from the earlier idea, an achievement and trophy tracker, to a chess coach. The project was renamed from OneMore% to BlindSpot; the GitHub repository `onemore-percent` was renamed to `blindspot-chess`.
-- Monorepo: `backend/` (Java 21, Spring Boot 4.1), `analysis-service/` (Python, FastAPI, python-chess, Stockfish), `frontend/` (placeholder for Phase 3), `docker-compose.yml` with PostgreSQL 17.
+- Monorepo: `backend/` (Java 21 at the time, Java 25 since the post-merge cleanup; Spring Boot 4.1), `analysis-service/` (Python, FastAPI, python-chess, Stockfish), `frontend/` (placeholder for Phase 3), `docker-compose.yml` with PostgreSQL 17.
 - Backend skeleton with `GET /health` reporting database status.
 - Flyway migration `backend/src/main/resources/db/migration/V1__initial_schema.sql`: users, chess accounts, games, move evaluations, mistake findings, explanations, drills, drill attempts.
 - Domain entities with their rules (analysis lifecycle, evidence-backed findings, explanation verification, own-game and transfer drills with SM-2 scheduling) and repositories.
