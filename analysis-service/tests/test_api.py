@@ -62,6 +62,20 @@ class TestAnalyze:
         for move in body["moves"]:
             assert len(move["scoreBefore"]) == 1 and len(move["scoreAfter"]) == 1
         assert body["moves"][-1]["scoreAfter"] == {"mate": 0}
+        assert body["findings"] == []
+
+    def test_findings_follow_the_contract(self):
+        response = post("1. e4 d5 2. Qg4 Bxg4 0-1", user_color="WHITE")
+        assert response.status_code == 200
+        [finding] = response.json()["findings"]
+        assert set(finding) == {"ply", "motif", "evidenceLineUci", "detectorVersion", "facts"}
+        assert finding["ply"] == 3
+        assert finding["motif"] == "HANGING_PIECE"
+        assert finding["detectorVersion"] == "hanging-0.2"
+        assert set(finding["facts"]) == {
+            "piece", "square", "capturedBy", "materialLost", "movedPiece", "movedFrom", "movedTo",
+        }
+        assert finding["facts"]["piece"] == "queen" and finding["facts"]["capturedBy"] == "bishop"
 
     def test_health_reports_the_engine_version(self):
         body = client.get("/health").json()

@@ -4,6 +4,78 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-13: Hanging-piece detector v0.2 (#3 / PR #20)
+
+**Goal:** Address the open points of v0.1 before merging: mates beyond the window, exchanges cut off by the window, and facts that name the moved piece.
+
+**Changes:**
+- `analysis-service/app/detectors/hanging_piece.py`: `DETECTOR_VERSION = "hanging-0.2"`. New input `score_after` (engine score after M, White's view) and `is_mate_against()`; window of 4 plies extended one ply at a time while the last ply was a capture, up to `MAX_WINDOW_PLIES = 8`; finding gains `moved_piece`, `moved_from`, `moved_to`.
+- `analysis-service/app/engine.py`: `PV_PLIES = 8` (was 4); passes the score after M to the detector. Search settings unchanged.
+- `analysis-service/app/models.py`: `facts` gains `movedPiece`, `movedFrom`, `movedTo`.
+- Tests: new pure tests for the mate score (mate on ply 5, a Black user, `is_mate_against` for both colours and non-mate scores), the extended window (an exchange that is level after 4 plies but loses 3 after the captures end; the same exchange with only 4 plies available; the cap, checked by lowering it to 5) and the moved-piece facts (discovered loss: `movedPiece` knight, `piece` queen). Version and fact-set assertions updated to `hanging-0.2`; the engine test's evidence-length bound follows the new window (at most 8).
+- Docs: [ADR 0004](decisions/0004-hanging-piece-detector.md) (rules, version history, "Open questions"), `analysis-service/README.md` example, `CHANGELOG.md`.
+
+**Decisions:**
+- **Rule 3 unchanged** (net loss of at least 2). Whether to measure net loss or the captured piece's value is open question (a) in ADR 0004, to be reviewed against real-game findings in Phase 2. Whether hung pieces in already-decided positions should count toward the pattern report is open question (b).
+- **Mate beyond the window:** a mate score against the user after M blocks the finding, however many moves away. Reason: v0.1 reported a capture followed by a mate on ply 5 as a hanging piece. `mate == 0` after M can only mean the user mated, so it never blocks. Rejected: a longer board-only window (still misses longer mates and costs nothing less).
+- **Window extension while captures continue, cap 8.** Reason: an exchange cut at ply 4 can look level although it loses material on ply 5. Rejected: a fixed longer window (would include quiet moves that do not change material and make evidence lines longer than needed).
+- **Moved piece in the facts.** Reason: in a discovered loss the piece that moved is not the piece that is lost; typed claims (ADR 0003) need both.
+
+**Verification:**
+- 94 tests pass in the Docker `test` image on arm64 and on amd64, including both determinism tests (moves and findings).
+- Hand-made positions were checked with python-chess before use. The exchange position first had White's bishop already giving check to the black king on g8 (invalid FEN); the king was moved to h8.
+- Real games, identical on amd64 and arm64:
+
+  | Game | v0.1 | v0.2 |
+  |---|---|---|
+  | `1. e4 e5 2. Nf3 d6 3. Nd4 exd4`, ply 5 (Nd4, BLUNDER, score after -720 cp) | evidence `e5d4 c2c3 d6d5 c3d4`, materialLost 2 | evidence `e5d4 c2c3 d6d5 c3d4 d5e4 d1b3`, **materialLost 3**; movedPiece knight f3→d4 |
+  | `1. e4 d5 2. Qg4 Bxg4`, ply 3 (Qg4, BLUNDER, score after -955 cp) | evidence `c8g4 e4e5 b8c6 f1b5`, materialLost 9 | unchanged; movedPiece queen d1→g4 |
+
+  The knight finding changed because ply 4 (`c3xd4`) was a capture, so the window extended: `d5xe4` on ply 5 is another capture, `Qb3` on ply 6 ends it. With the pawn trade finished, the loss is the whole knight. The queen line's ply 4 is quiet, so its window stays at 4. Neither game has a mate score, so the new mate rule did not affect them.
+- CI on PR #20 after the v0.2 commits, first run green: 94 passed in the image on the runner (amd64), backend and Compose stack green.
+
+**Open points / risks:**
+- Open questions (a) and (b) in ADR 0004.
+- The 8-ply cap is not reached by any test line; it is checked by lowering the cap in a test.
+- Findings stored with `hanging-0.1` (none yet; nothing is persisted before #4) would need recomputing.
+
+**Links:** [#3](https://github.com/Gergo019/blindspot-chess/issues/3), [PR #20](https://github.com/Gergo019/blindspot-chess/pull/20), [ADR 0004](decisions/0004-hanging-piece-detector.md)
+
+## 2026-11-13: Hanging-piece detector v0.1 (#3 / PR #20)
+
+**Goal:** Detect when a user's move leaves one of their pieces to be won, with an evidence line the player can replay.
+
+**Changes:**
+- `analysis-service/app/detectors/hanging_piece.py` (new): the pure detector, `DETECTOR_VERSION = "hanging-0.1"`.
+- `analysis-service/app/engine.py`: each analysed position keeps the first 4 plies of the principal variation (`PV_PLIES`); `analyze_game` returns moves and findings and runs the detector on the user's moves only. Search settings unchanged.
+- `analysis-service/app/models.py`, `app/main.py`: `POST /analyze` returns `findings` (`ply`, `motif`, `evidenceLineUci`, `detectorVersion`, `facts` with `piece`, `square`, `capturedBy`, `materialLost`); `moves` unchanged.
+- Tests: `tests/test_hanging_piece.py` (20 pure tests, hand-written positions and lines), `tests/test_findings_engine.py` (5 engine tests), one API contract test; `tests/conftest.py` gains an `analyze_full` fixture, the existing `analyze` fixture behaves as before.
+- Docs: [ADR 0004](decisions/0004-hanging-piece-detector.md), `analysis-service/README.md`, `CHANGELOG.md`.
+
+**Decisions:**
+- **Definition** as in ADR 0004: user move classified MISTAKE or BLUNDER; the engine's PV after it starts by capturing a user knight, bishop, rook or queen; net loss of at least 2 points over up to 4 PV plies; no checkmate within those plies. Reason: rules 1 and 2 let the engine judge whether the loss is real (sound sacrifices and refuted captures drop out), rule 3 drops even trades. Rejected: a static "attacked and undefended" check (misses discovered attacks, fires on sacrifices and on pieces that cannot safely be taken).
+- **Pure detector, no engine calls.** Reason: every rule is unit-testable with hand-written lines. Rejected: letting the detector query the engine.
+- **The material window ends after the user's second reply** (plies: capture, reply, opponent, reply), so the first recapture is always counted.
+- **Mate is checked on the board inside the window only** (a checkmate after any window ply). The detector does not look at the engine's mate score, because its inputs are the board, the move, the classification and the PV.
+- **Facts name the captured piece**, which in a discovered loss is not the piece that moved.
+- **Illegal input raises** (`ValueError`) instead of returning no finding: engine lines are always legal, so an illegal line is a bug to surface.
+
+**Verification:**
+- Pure tests: fire for a knight moved onto a pawn-attacked square (3 points), a rook defended once but attacked by a bishop (exchange, 2), a discovered loss (queen for rook, 4) and a Black user; do not fire for an even trade (BxN, bxc6), a BEST sacrifice, GOOD or INACCURACY moves, a hanging pawn, a positional mistake (1. f3), a loose-looking piece the engine does not take, a capture that mates at once (back rank), a capture followed by mate on ply 3, a capture of the opponent's own piece, and an empty PV.
+- While writing the mate test, the first hand-made position was wrong (after Qa5 the queen still covered e1, so Rxe1 was not mate); the position was checked with python-chess and replaced with Qa2. The detector was right.
+- In the Docker `test` image: 81 passed on arm64 and on amd64, including the existing determinism test.
+- Real findings, identical on amd64 and arm64: `1. e4 e5 2. Nf3 d6 3. Nd4 exd4` gives ply 5 (Nd4, BLUNDER), evidence `e5d4 c2c3 d6d5 c3d4`, knight on d4 taken by a pawn, materialLost 2 (White wins a pawn back in the line). `1. e4 d5 2. Qg4 Bxg4` gives ply 3 (Qg4, BLUNDER), evidence `c8g4 e4e5 b8c6 f1b5`, queen on g4 taken by a bishop, materialLost 9.
+- CI on PR #20, first run green: 81 passed in the image on the runner (amd64), backend 15 passed, Compose stack healthy.
+
+**Open points / risks:**
+- **Net loss counts material won back in the window.** The hung knight above scores exactly 2 because the engine line regains a pawn; a knight lost for two pawns would not fire. Revisit the threshold (or measure the piece's value instead of the net) with real games.
+- **The mate rule only sees the 4-ply window.** A capture followed by a mate on ply 5 or later is reported as a hanging piece. Using the engine's score after M (a mate against the user) would catch it, but that is an input the detector does not take yet.
+- **Exchange sequences longer than 4 plies** are cut off; the net loss is whatever stands after ply 4.
+- **Hopeless positions:** a piece hung when the game is already lost (or still won) is usually classified GOOD, so no finding. Intended by the classification design, but a coach might still want to mention it.
+- **Promotions in the window** count against the user like any other material change.
+
+**Links:** [#3](https://github.com/Gergo019/blindspot-chess/issues/3), [PR #20](https://github.com/Gergo019/blindspot-chess/pull/20), [ADR 0004](decisions/0004-hanging-piece-detector.md), [ADR 0003](decisions/0003-facts-first-explanations.md)
+
 ## 2026-11-13: Post-merge cleanup (PR #17)
 
 **Goal:** Repair what the dependency merges and the PR #16 conflict resolution left behind, and put the backend on one Java LTS.

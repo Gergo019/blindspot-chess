@@ -5,6 +5,7 @@ from White's point of view and exactly one of cp / mate is set per score.
 """
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
@@ -66,6 +67,29 @@ class MoveEvaluation(_CamelModel):
     classification: Classification
 
 
+class FindingFacts(_CamelModel):
+    """Checked facts behind a finding: the start of the typed claims (ADR 0003)."""
+
+    piece: str  # the user's piece that is won, e.g. "knight"
+    square: str  # where it is captured, e.g. "d4"
+    captured_by: str  # the opponent's capturing piece, e.g. "pawn"
+    material_lost: int = Field(ge=1)
+    moved_piece: str  # the piece the user moved; differs from piece in a discovered loss
+    moved_from: str
+    moved_to: str
+
+
+class Finding(_CamelModel):
+    """A detected motif behind one of the user's moves, with board evidence."""
+
+    ply: int = Field(ge=1)  # the user's move the finding is about
+    motif: Literal["HANGING_PIECE"]
+    evidence_line_uci: str  # the follow-up after that move, space-separated UCI
+    detector_version: str
+    facts: FindingFacts
+
+
 class AnalyzeResponse(_CamelModel):
     engine: EngineInfo
     moves: list[MoveEvaluation]
+    findings: list[Finding]

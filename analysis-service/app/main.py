@@ -63,7 +63,7 @@ def analyze(request: AnalyzeRequest, settings: SettingsDep) -> AnalyzeResponse:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         with open_engine(settings) as engine:
-            moves = analyze_game(game, request.user_color == Color.WHITE, engine)
-            return AnalyzeResponse(engine=engine.info, moves=moves)
+            result = analyze_game(game, request.user_color == Color.WHITE, engine)
+            return AnalyzeResponse(engine=engine.info, moves=result.moves, findings=result.findings)
     except EngineUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
