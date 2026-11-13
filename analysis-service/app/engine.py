@@ -21,8 +21,13 @@ import chess.engine
 
 from app.classify import classify
 from app.config import Settings
-from app.models import EngineInfo, MoveEvaluation, Score
+from app.detectors import hanging_piece
+from app.models import EngineInfo, Finding, FindingFacts, MoveEvaluation, Score
 from app.pgn import ParsedGame
+
+# Plies of the principal variation kept per position; detectors use them as
+# evidence lines (hanging-piece v0.1 uses at most 4).
+PV_PLIES = 4
 
 
 class EngineUnavailableError(RuntimeError):
@@ -33,6 +38,13 @@ class EngineUnavailableError(RuntimeError):
 class PositionEval:
     score: Score  # White's point of view
     best_move: chess.Move | None  # None when the game is over in this position
+    pv: tuple[chess.Move, ...] = ()  # first PV_PLIES plies of the principal variation
+
+
+@dataclass(frozen=True)
+class GameAnalysis:
+    moves: list[MoveEvaluation]
+    findings: list[Finding]
 
 
 def split_engine_id(engine_id: str) -> tuple[str, str]:
@@ -66,10 +78,10 @@ class Engine:
             score = Score(mate=pov.mate())
         else:
             score = Score(cp=pov.score())
-        best = info.get("pv", [None])[0]
-        if best is None:
+        pv = tuple(info.get("pv", ()))
+        if not pv:
             raise RuntimeError(f"Stockfish returned no best move for {board.fen()}")
-        return PositionEval(score, best)
+        return PositionEval(score, pv[0], pv[:PV_PLIES])
 
 
 @contextmanager
@@ -87,34 +99,55 @@ def open_engine(settings: Settings) -> Iterator[Engine]:
         raw.quit()
 
 
-def analyze_game(game: ParsedGame, user_is_white: bool, engine: Engine) -> list[MoveEvaluation]:
-    """Evaluate every half-move of the game, for both sides."""
+def analyze_game(game: ParsedGame, user_is_white: bool, engine: Engine) -> GameAnalysis:
+    """Evaluate every half-move of the game, for both sides, and run the
+    detectors on the user's moves."""
     board = game.start.copy()
     current = engine.evaluate(board)
     evaluations: list[MoveEvaluation] = []
+    findings: list[Finding] = []
     for ply, move in enumerate(game.moves, start=1):
         white_moved = board.turn == chess.WHITE
-        fen_before = board.fen()
+        by_user = white_moved == user_is_white
+        position_before = board.copy(stack=False)
         san = board.san(move)
         before = current
         board.push(move)
         current = engine.evaluate(board)
-        evaluations.append(
-            MoveEvaluation(
-                ply=ply,
-                by_user=white_moved == user_is_white,
-                fen_before=fen_before,
-                move_uci=move.uci(),
-                move_san=san,
-                best_move_uci=before.best_move.uci(),
-                score_before=before.score,
-                score_after=current.score,
-                classification=classify(
-                    white_moved=white_moved,
-                    played_best=move == before.best_move,
-                    before=(before.score.cp, before.score.mate),
-                    after=(current.score.cp, current.score.mate),
-                ),
-            )
+        evaluation = MoveEvaluation(
+            ply=ply,
+            by_user=by_user,
+            fen_before=position_before.fen(),
+            move_uci=move.uci(),
+            move_san=san,
+            best_move_uci=before.best_move.uci(),
+            score_before=before.score,
+            score_after=current.score,
+            classification=classify(
+                white_moved=white_moved,
+                played_best=move == before.best_move,
+                before=(before.score.cp, before.score.mate),
+                after=(current.score.cp, current.score.mate),
+            ),
         )
-    return evaluations
+        evaluations.append(evaluation)
+        if by_user:
+            hanging = hanging_piece.detect(position_before, move, evaluation.classification, current.pv)
+            if hanging is not None:
+                findings.append(_finding(ply, hanging))
+    return GameAnalysis(moves=evaluations, findings=findings)
+
+
+def _finding(ply: int, hanging: hanging_piece.HangingPieceFinding) -> Finding:
+    return Finding(
+        ply=ply,
+        motif=hanging.motif,
+        evidence_line_uci=hanging.evidence_line_uci,
+        detector_version=hanging.detector_version,
+        facts=FindingFacts(
+            piece=hanging.piece,
+            square=hanging.square,
+            captured_by=hanging.captured_by,
+            material_lost=hanging.material_lost,
+        ),
+    )
