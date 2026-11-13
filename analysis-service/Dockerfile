@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.15-slim
 
 # Stockfish from Debian's package repository (installed to /usr/games/stockfish).
 RUN apt-get update \
