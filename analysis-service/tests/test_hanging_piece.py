@@ -1,31 +1,36 @@
-"""Hanging-piece detector v0.1: pure tests with hand-written positions and lines.
+"""Hanging-piece detector: pure tests with hand-written positions and lines.
 
 Each case gives the position before the user's move, the move, its
-classification and a hand-written principal variation from the position after
-it. No engine is involved.
+classification, a hand-written principal variation from the position after it
+and, where it matters, the engine score after it. No engine is involved.
 """
 
 import chess
 import pytest
 
 from app.classify import Classification
+from app.detectors import hanging_piece
 from app.detectors.hanging_piece import (
     DETECTOR_VERSION,
     detect,
+    is_mate_against,
     material_balance,
 )
+from app.models import Score
 
 BLUNDER = Classification.BLUNDER
 MISTAKE = Classification.MISTAKE
 
 
-def run(fen: str, move: str, classification: Classification, pv: str):
+def run(fen: str, move: str, classification: Classification, pv: str, score: Score | None = None):
+    """``score`` is the engine score after the move (White's view); None = not a mate."""
     board = chess.Board(fen)
     return detect(
         board,
         chess.Move.from_uci(move),
         classification,
         [chess.Move.from_uci(m) for m in pv.split()],
+        score,
     )
 
 
@@ -42,8 +47,10 @@ class TestFires:
         assert (finding.piece, finding.square, finding.captured_by) == ("knight", "d4", "pawn")
         assert finding.material_lost == 3
         assert finding.evidence_line_uci == KNIGHT_TO_PAWN_PV
-        assert finding.detector_version == DETECTOR_VERSION == "hanging-0.1"
+        assert finding.detector_version == DETECTOR_VERSION == "hanging-0.2"
         assert finding.motif == "HANGING_PIECE"
+        # The moved piece is the one that is lost.
+        assert (finding.moved_piece, finding.moved_from, finding.moved_to) == ("knight", "f3", "d4")
 
     def test_rook_defended_once_but_attacked_by_a_bishop_loses_the_exchange(self):
         # Rc4 is defended by the b3 pawn; Bxc4 bxc4 wins rook for bishop: 2 points.
@@ -58,6 +65,9 @@ class TestFires:
         assert finding is not None
         assert (finding.piece, finding.square, finding.captured_by) == ("queen", "e2", "rook")
         assert finding.material_lost == 4
+        # The piece that moved is not the piece that is lost.
+        assert (finding.moved_piece, finding.moved_from, finding.moved_to) == ("knight", "e4", "c5")
+        assert finding.moved_piece != finding.piece
 
     def test_black_user_is_judged_from_blacks_side(self):
         # Mirror of the knight case: Black's knight f6 goes to d5, attacked by the e4 pawn.
@@ -72,9 +82,41 @@ class TestFires:
         assert finding is not None
         assert finding.evidence_line_uci == "e5d4"
 
-    def test_only_the_first_four_plies_are_used(self):
+    def test_only_the_first_four_plies_are_used_when_the_fourth_is_quiet(self):
         finding = run(*KNIGHT_TO_PAWN, BLUNDER, KNIGHT_TO_PAWN_PV + " b8c6 b1c3")
         assert finding.evidence_line_uci == KNIGHT_TO_PAWN_PV
+
+    def test_a_mate_score_for_the_user_does_not_block_the_finding(self):
+        finding = run(*KNIGHT_TO_PAWN, BLUNDER, KNIGHT_TO_PAWN_PV, Score(mate=5))
+        assert finding is not None
+
+
+# Nd5 starts a long exchange on d5: cxd5 exd5 Nxd5 Bxd5 leaves material level
+# after 4 plies, but Rxd5 on ply 5 wins the bishop and White cannot recapture.
+LONG_EXCHANGE = ("3r3k/8/2p2n2/8/4P3/1BN5/8/6K1 w - - 0 1", "c3d5")
+LONG_EXCHANGE_PV = "c6d5 e4d5 f6d5 b3d5 d8d5 g1f2 h8g7 f2e3"
+
+
+class TestWindow:
+    def test_exchange_is_judged_after_the_captures_end(self):
+        finding = run(*LONG_EXCHANGE, MISTAKE, LONG_EXCHANGE_PV)
+        assert finding is not None
+        # Window = 4 plies, + ply 5 (ply 4 was a capture), + ply 6 (ply 5 was a capture); ply 6 is quiet.
+        assert finding.evidence_line_uci == "c6d5 e4d5 f6d5 b3d5 d8d5 g1f2"
+        assert finding.material_lost == 3
+
+    def test_cut_after_four_plies_the_same_exchange_looks_level(self):
+        # Only four plies available: the window cannot extend, the balance is level, no finding.
+        assert run(*LONG_EXCHANGE, MISTAKE, "c6d5 e4d5 f6d5 b3d5") is None
+
+    def test_the_extension_stops_at_the_cap(self, monkeypatch):
+        # The cap is 8 plies; no short hand-made exchange reaches it, so lower it to 5
+        # and check that the same exchange is cut there while captures still continue.
+        assert hanging_piece.MAX_WINDOW_PLIES == 8
+        monkeypatch.setattr(hanging_piece, "MAX_WINDOW_PLIES", 5)
+        finding = run(*LONG_EXCHANGE, MISTAKE, LONG_EXCHANGE_PV)
+        assert finding.evidence_line_uci == "c6d5 e4d5 f6d5 b3d5 d8d5"
+        assert finding.material_lost == 3
 
 
 class TestDoesNotFire:
@@ -111,12 +153,42 @@ class TestDoesNotFire:
         # Ra7 leaves the back rank: Qxe4 wins the knight (3 points), then Qe1 is mate on ply 3.
         assert run("6k1/5ppp/8/3q4/4N3/8/5PPP/R5K1 w - - 0 1", "a1a7", BLUNDER, "d5e4 a7b7 e4e1") is None
 
+    def test_capture_then_mate_after_the_window(self):
+        # Ra2 drops the e4 knight (Rxe4, 3 points); the mate comes on ply 5 (Re1+ Bf1 Rxf1#),
+        # outside the 4-ply window. Only the engine score (Black mates in 3) shows it.
+        position = ("4r1k1/5ppp/b7/8/2B1N3/8/4RPPP/6K1 w - - 0 1", "e2a2")
+        line = "e8e4 a2a3 e4e1 c4f1 e1f1"
+        assert run(*position, BLUNDER, line, Score(mate=-3)) is None
+        # Without the mate score the window alone does not see the mate (that is why the score is needed).
+        assert run(*position, BLUNDER, line, Score(cp=-350)) is not None
+
+    def test_mate_against_a_black_user(self):
+        fen = "rnbqkb1r/pppppppp/5n2/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2"
+        assert run(fen, "f6d5", BLUNDER, "e4d5 d7d6 g1f3 c8g4", Score(mate=4)) is None
+
     def test_capture_of_the_opponents_own_piece_is_not_a_user_loss(self):
         # The PV starts with a capture, but of a piece that is not the user's: not this motif.
         assert run("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", "e1e2", MISTAKE, "d5e4 e2e3") is None
 
     def test_no_principal_variation(self):
         assert run(*KNIGHT_TO_PAWN, BLUNDER, "") is None
+
+
+class TestMateScore:
+    @pytest.mark.parametrize(
+        "score, user, expected",
+        [
+            (Score(mate=-3), chess.WHITE, True),
+            (Score(mate=3), chess.WHITE, False),
+            (Score(mate=3), chess.BLACK, True),
+            (Score(mate=-3), chess.BLACK, False),
+            (Score(mate=0), chess.WHITE, False),
+            (Score(cp=-900), chess.WHITE, False),
+            (None, chess.WHITE, False),
+        ],
+    )
+    def test_is_mate_against(self, score, user, expected):
+        assert is_mate_against(score, user) is expected
 
 
 class TestInputs:

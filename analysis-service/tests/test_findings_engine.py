@@ -34,11 +34,12 @@ def test_knight_moved_into_a_pawn_capture(analyze_full):
     finding = result.findings[0]
     assert finding.ply == HANGS_KNIGHT_PLY
     assert finding.motif == "HANGING_PIECE"
-    assert finding.detector_version == "hanging-0.1"
+    assert finding.detector_version == "hanging-0.2"
     assert (finding.facts.piece, finding.facts.square, finding.facts.captured_by) == ("knight", "d4", "pawn")
     assert finding.facts.material_lost >= 2
+    assert (finding.facts.moved_piece, finding.facts.moved_from, finding.facts.moved_to) == ("knight", "f3", "d4")
     assert finding.evidence_line_uci.split()[0] == "e5d4"
-    assert 1 <= len(finding.evidence_line_uci.split()) <= 4
+    assert 1 <= len(finding.evidence_line_uci.split()) <= 8
     replay(result.moves, finding.ply, finding.evidence_line_uci)
 
 

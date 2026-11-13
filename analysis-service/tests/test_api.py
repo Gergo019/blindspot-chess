@@ -71,8 +71,10 @@ class TestAnalyze:
         assert set(finding) == {"ply", "motif", "evidenceLineUci", "detectorVersion", "facts"}
         assert finding["ply"] == 3
         assert finding["motif"] == "HANGING_PIECE"
-        assert finding["detectorVersion"] == "hanging-0.1"
-        assert set(finding["facts"]) == {"piece", "square", "capturedBy", "materialLost"}
+        assert finding["detectorVersion"] == "hanging-0.2"
+        assert set(finding["facts"]) == {
+            "piece", "square", "capturedBy", "materialLost", "movedPiece", "movedFrom", "movedTo",
+        }
         assert finding["facts"]["piece"] == "queen" and finding["facts"]["capturedBy"] == "bishop"
 
     def test_health_reports_the_engine_version(self):

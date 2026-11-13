@@ -74,6 +74,9 @@ class FindingFacts(_CamelModel):
     square: str  # where it is captured, e.g. "d4"
     captured_by: str  # the opponent's capturing piece, e.g. "pawn"
     material_lost: int = Field(ge=1)
+    moved_piece: str  # the piece the user moved; differs from piece in a discovered loss
+    moved_from: str
+    moved_to: str
 
 
 class Finding(_CamelModel):

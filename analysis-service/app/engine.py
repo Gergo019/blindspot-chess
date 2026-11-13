@@ -26,8 +26,9 @@ from app.models import EngineInfo, Finding, FindingFacts, MoveEvaluation, Score
 from app.pgn import ParsedGame
 
 # Plies of the principal variation kept per position; detectors use them as
-# evidence lines (hanging-piece v0.1 uses at most 4).
-PV_PLIES = 4
+# evidence lines (the hanging-piece window is 4 plies, extended up to 8 while
+# captures continue).
+PV_PLIES = 8
 
 
 class EngineUnavailableError(RuntimeError):
@@ -132,7 +133,9 @@ def analyze_game(game: ParsedGame, user_is_white: bool, engine: Engine) -> GameA
         )
         evaluations.append(evaluation)
         if by_user:
-            hanging = hanging_piece.detect(position_before, move, evaluation.classification, current.pv)
+            hanging = hanging_piece.detect(
+                position_before, move, evaluation.classification, current.pv, current.score
+            )
             if hanging is not None:
                 findings.append(_finding(ply, hanging))
     return GameAnalysis(moves=evaluations, findings=findings)
@@ -149,5 +152,8 @@ def _finding(ply: int, hanging: hanging_piece.HangingPieceFinding) -> Finding:
             square=hanging.square,
             captured_by=hanging.captured_by,
             material_lost=hanging.material_lost,
+            moved_piece=hanging.moved_piece,
+            moved_from=hanging.moved_from,
+            moved_to=hanging.moved_to,
         ),
     )

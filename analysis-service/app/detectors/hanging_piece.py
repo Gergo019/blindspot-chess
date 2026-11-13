@@ -1,4 +1,4 @@
-"""Hanging-piece detector v0.1. Pure: no engine calls.
+"""Hanging-piece detector v0.2. Pure: no engine calls.
 
 A HANGING_PIECE finding is reported for a user move M when all of these hold
 (ADR 0004):
@@ -7,14 +7,18 @@ A HANGING_PIECE finding is reported for a user move M when all of these hold
    approves of.
 2. The engine's principal variation (PV) from the position after M starts
    with the opponent capturing one of the user's pieces: a knight, bishop,
-   rook or queen. Pawns are out of scope in v0.1.
+   rook or queen. Pawns are out of scope.
 3. Net material loss of at least 2 points (P=1, N=B=3, R=5, Q=9, from the
-   user's side): the balance before M compared with the balance after M plus
-   the first up to 4 PV plies. Even trades (BxN, PxB) do not count.
-4. No checkmate occurs within that window; a mating line will be its own
-   motif later.
+   user's side): the balance before M compared with the balance at the end
+   of the window. The window is the first 4 PV plies, extended one ply at a
+   time while its last move was a capture, up to 8 plies, so an exchange is
+   judged after the captures end. Even trades (BxN, PxB) do not count.
+4. No forced mate against the user: neither a checkmate inside the window
+   nor an engine score after M that is a mate against the user. A mating
+   line will be its own motif later.
 
-The evidence line is the PV plies used for the material check, in UCI.
+The evidence line is the window: the PV plies used for the material check,
+in UCI.
 """
 
 from dataclasses import dataclass
@@ -22,10 +26,12 @@ from dataclasses import dataclass
 import chess
 
 from app.classify import Classification
+from app.models import Score
 
-DETECTOR_VERSION = "hanging-0.1"
+DETECTOR_VERSION = "hanging-0.2"
 MOTIF = "HANGING_PIECE"
-WINDOW_PLIES = 4
+BASE_WINDOW_PLIES = 4
+MAX_WINDOW_PLIES = 8
 MIN_MATERIAL_LOSS = 2
 
 PIECE_VALUES = {
@@ -47,6 +53,9 @@ class HangingPieceFinding:
     square: str  # where it is captured, e.g. "d4"
     captured_by: str  # the opponent's capturing piece, e.g. "pawn"
     material_lost: int
+    moved_piece: str  # the piece the user moved with M; differs from piece in a discovered loss
+    moved_from: str
+    moved_to: str
     motif: str = MOTIF
     detector_version: str = DETECTOR_VERSION
 
@@ -64,31 +73,46 @@ def material_balance(board: chess.Board, color: chess.Color) -> int:
     return balance
 
 
+def is_mate_against(score: Score | None, user: chess.Color) -> bool:
+    """True if ``score`` (White's point of view, position after M) is a forced mate against the user.
+
+    After M the opponent is to move, so ``mate == 0`` (side to move is mated)
+    would be the user mating, never a mate against them.
+    """
+    if score is None or score.mate is None or score.mate == 0:
+        return False
+    return score.mate < 0 if user == chess.WHITE else score.mate > 0
+
+
 def detect(
     board: chess.Board,
     move: chess.Move,
     classification: Classification,
     principal_variation: list[chess.Move] | tuple[chess.Move, ...],
+    score_after: Score | None,
 ) -> HangingPieceFinding | None:
     """Check one user move.
 
     ``board`` is the position before ``move`` (the user is to move);
-    ``principal_variation`` is the engine's PV from the position after it.
-    Raises ValueError if the move or a PV move is illegal.
+    ``principal_variation`` and ``score_after`` are the engine's PV and score
+    (White's point of view) for the position after it. Raises ValueError if
+    the move or a PV move is illegal.
     """
     if classification not in FLAGGED:
         return None
     user = board.turn
     if move not in board.legal_moves:
         raise ValueError(f"{move.uci()} is not legal in {board.fen()}")
-
-    after = board.copy(stack=False)
-    after.push(move)
-    window = list(principal_variation[:WINDOW_PLIES])
-    if not window:
+    if is_mate_against(score_after, user):
         return None
 
-    first = window[0]
+    moved = board.piece_at(move.from_square)
+    after = board.copy(stack=False)
+    after.push(move)
+    if not principal_variation:
+        return None
+
+    first = principal_variation[0]
     target = after.piece_at(first.to_square)
     if (
         first not in after.legal_moves
@@ -101,10 +125,16 @@ def detect(
     capturer = after.piece_at(first.from_square)
 
     line = after.copy(stack=False)
-    for ply in window:
+    window: list[chess.Move] = []
+    last_was_capture = False
+    for ply in principal_variation[:MAX_WINDOW_PLIES]:
+        if len(window) >= BASE_WINDOW_PLIES and not last_was_capture:
+            break
         if ply not in line.legal_moves:
             raise ValueError(f"PV move {ply.uci()} is not legal in {line.fen()}")
+        last_was_capture = line.is_capture(ply)
         line.push(ply)
+        window.append(ply)
         if line.is_checkmate():
             return None
 
@@ -118,4 +148,7 @@ def detect(
         square=chess.square_name(first.to_square),
         captured_by=chess.piece_name(capturer.piece_type),
         material_lost=material_lost,
+        moved_piece=chess.piece_name(moved.piece_type),
+        moved_from=chess.square_name(move.from_square),
+        moved_to=chess.square_name(move.to_square),
     )
