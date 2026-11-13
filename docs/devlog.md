@@ -38,6 +38,14 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - Locally in the `test` image: 55 passed on arm64 and 55 passed on amd64 (emulated). Classification unit tests (formula, inclusive thresholds, mate handling, BEST vs GOOD, won and lost positions); PGN tests; engine tests (hung queen is BLUNDER, Fool's mate ends with mate 0 and `g4` is BLUNDER, Loyd's stalemate ends with cp 0, determinism: same game twice gives identical output); API tests (422 for `*`, an illegal PGN, a 301-ply game and an unknown colour; 503 without engine; response contract; health).
 - UCI traffic logged in the image: `setoption name Hash value 64`, then `ucinewgame`, `isready`, `position`, `go depth 16` for every position. `Threads` is not sent because python-chess skips options equal to the engine default (1).
 - The Blackburne Shilling game analysed with the x86-64 and the arm64 binary gave byte-identical JSON.
+- **Worked example, 1. f3** (Stockfish 19, depth 16, Threads 1, Hash 64 MB; identical on amd64 and arm64):
+
+  | | Score (White's view) | Winning chances (White's view) |
+  |---|---|---|
+  | Before 1. f3 (best move e2e4) | +39 cp | +0.071677 |
+  | After 1. f3 | -71 cp | -0.129974 |
+
+  Drop for the mover (White): 0.071677 - (-0.129974) = **0.201652**, at least 0.2 and below 0.3, so **MISTAKE**. Computed the way lila's `CpAdvice` does it ([Advice.scala L51-58](https://github.com/lichess-org/lila/blob/3e79a4579cb02b83d6fc7fe2e855cf8ff5949e20/modules/tree/src/main/Advice.scala#L51-L58)): the previous position's eval against this position's eval, both from White's view, with `delta = current - prev` negated when the mover is White (`info.color.fold(-d, d)`). lila's `Info` is the position after the move and `color = prevPly.turn` is the mover ([Info.scala L7-14](https://github.com/lichess-org/lila/blob/3e79a4579cb02b83d6fc7fe2e855cf8ff5949e20/modules/tree/src/main/Info.scala#L7-L14)). An independent re-implementation of that expression gave the same delta and the same judgement. Sensitivity: with -70 cp after the move the drop would be 0.199841 (INACCURACY).
 - Runtime image smoke test: `/health` reports Stockfish 19, depth 16; `POST /analyze` returns the contract; an unfinished game returns 422.
 - CI on PR #16, first run green: the runner's image build verified the x86-64 checksum (`/tmp/stockfish.tar.gz: OK`); `Analysis service (install + smoke test)` ran 55 passed in the image; `Backend (build + tests)` passed; `Docker Compose stack` started and `/health` reported Stockfish 19, depth 16.
 
@@ -45,7 +53,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - Not yet measured: time per position at depth 16, single-threaded. The whole test suite, including nine engine analyses of short games, runs in about 12 s in the image; a long game will take much longer. Fine for a background job; the backend client needs a generous timeout.
 - Concurrent requests each start an engine process; there is no limit on concurrency yet. Worth a cap when the backend job runs in parallel.
 - The mate rule differs slightly from Lichess's `MateAdvice` (see Decisions).
-- The first move from the starting position can already be a MISTAKE (1. f3 drops about 0.2 winning chances at depth 16). That is the formula working as designed, but worth reviewing with real games.
+- 1. f3 is classified MISTAKE, but only just (worked example below): one centipawn less loss (-70 instead of -71) would make it an INACCURACY. Moves near a threshold can change class with a different engine version, depth or hash size. Thresholds stay as they are; worth reviewing with real games. Lichess's own analysis may label the same move differently because its server analysis uses its own engine settings.
 - Upgrading Stockfish changes evaluations; stored rows keep their engine version.
 
 **Links:** [#2](https://github.com/Gergo019/blindspot-chess/issues/2), [PR #16](https://github.com/Gergo019/blindspot-chess/pull/16), [ADR 0002](decisions/0002-python-analysis-service.md)
