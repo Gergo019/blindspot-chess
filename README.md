@@ -62,6 +62,7 @@ The evaluation reports, per mode, unsupported claims (including examples that re
 - **backend** owns the domain and all persistence, organised by bounded context: `account`, `game`, `analysis`, `training`. Domain rules live in the entities (analysis lifecycle, verification, SM-2 scheduling), not in services.
 - **analysis-service** owns chess knowledge: engine analysis, motif detection, fact extraction and explanation verification. It is stateless; the backend is its only caller. Why Python: [ADR 0002](docs/decisions/0002-python-analysis-service.md).
 - **backend → analysis-service** is real and end-to-end tested: `AnalysisService.analyzeGame` marks a stored game RUNNING, calls `POST /analyze` outside any transaction (`AnalysisClient`, connect timeout 2 s, read timeout `ANALYSIS_SERVICE_READ_TIMEOUT`, default 180 s), then stores one move evaluation per half-move and one finding per detected motif (with its facts) and marks the game DONE. A rejected game (422) or any error marks it FAILED; a game is never left RUNNING.
+- **Lichess → backend** is real: `LichessImportJob` runs every `LICHESS_IMPORT_INTERVAL` (default 1 h) for each Lichess account and asks the [game export](https://lichess.org/api#tag/games/GET/api/games/user/{username}) for the newest `LICHESS_IMPORT_BATCH_SIZE` (default 20) finished rapid games as NDJSON. Games in progress, other speeds, other variants and games already stored (same Lichess game id) are skipped; the rest are stored as PENDING for analysis. Until there is sign-up, `LICHESS_USERNAME` names the one account to import for.
 - **Data sources**: the [Lichess API](https://lichess.org/api) for live imports, and the [Lichess open database](https://database.lichess.org/) (CC0) for a seeded demo and the held-out evaluation set, so a demo never depends on live imports.
 
 ## What this project demonstrates
@@ -72,7 +73,7 @@ The evaluation reports, per mode, unsupported claims (including examples that re
 | Database design | Flyway migrations with check constraints, partial indexes, JSONB |
 | REST and service boundaries | backend calls the analysis service over REST; Lichess API integration |
 | Domain-Driven Design | bounded contexts, entities that guard their own invariants |
-| Testing | JUnit 5 unit tests (Surefire), Testcontainers integration tests (`*IT`, Failsafe) on real PostgreSQL, and an end-to-end test that runs a known game through the backend, the real analysis service and Stockfish; planned: WireMock for Lichess, Cucumber acceptance tests, Playwright end-to-end tests |
+| Testing | JUnit 5 unit tests (Surefire), Testcontainers integration tests (`*IT`, Failsafe) on real PostgreSQL, an end-to-end test that runs a known game through the backend, the real analysis service and Stockfish, and the Lichess import tested against recorded API responses (never the live API); planned: Cucumber acceptance tests, Playwright end-to-end tests |
 | React + TypeScript | `frontend/` (Phase 3) |
 | CI/CD and containers | GitHub Actions, Docker multi-stage builds, Docker Compose; planned: Kubernetes manifests tested on kind |
 | Applied AI, measured | validated typed claims, and a measured experiment comparing templates with AI explanations (planned) |
@@ -92,6 +93,8 @@ docker compose up --build
 | Backend | http://localhost:8080/health |
 | Analysis service | http://localhost:8000/health (reports the pinned Stockfish version and depth); `POST /analyze`, see [analysis-service](analysis-service/README.md) |
 | PostgreSQL | `localhost:5432` (db/user/password from `.env`) |
+
+To import your own games, set `LICHESS_USERNAME` in `.env` before starting: about 10 seconds after startup the backend fetches your newest finished rapid games from Lichess and stores them, then repeats every hour. No token is needed for public games; `LICHESS_API_TOKEN` only raises the rate limit.
 
 Run only the database in Docker and the backend from your IDE:
 

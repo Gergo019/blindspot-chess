@@ -4,6 +4,44 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-13: Lichess import of recent completed rapid games (#5 / PR #27)
+
+**Goal:** Import a user's recent completed rapid games from Lichess in the background, bounded and deduplicated, and store them as PENDING. Analysing them is #22.
+
+**Changes:**
+- `backend/.../lichess/`: `LichessClient` and `LichessClientConfig` (RestClient: base URL, `User-Agent`, bearer token only when set, connect 5 s, read 60 s); `LichessGame` (the NDJSON fields used); `LichessGameMapper` (skip rules and mapping, no Spring); `LichessImportService` (`importRecentGames(accountId)`); `LichessImportJob` (`@Scheduled`, every Lichess account, one failure does not stop the others); `LichessAccountSetup` (creates the account named by `LICHESS_USERNAME`); `LichessProperties`; `LichessException`.
+- `backend/.../common/SchedulingConfig.java`: `@EnableScheduling` and a `Clock` bean.
+- `ChessAccountRepository.findByPlatform`.
+- `application.yml`, `docker-compose.yml`, `.env.example`: `LICHESS_USERNAME`, `LICHESS_IMPORT_BATCH_SIZE` (20), `LICHESS_IMPORT_INTERVAL` (1h), `LICHESS_IMPORT_ENABLED`, `LICHESS_USER_AGENT`, `LICHESS_BASE_URL`.
+- Tests: `LichessGameMapperTest` (8), `LichessClientTest` (4), `LichessImportServiceTest` (3), `LichessImportIT` (PostgreSQL plus a local HTTP server answering with the recorded export). The other integration tests switch the job off.
+- `backend/src/test/resources/lichess/`: the recorded export and a README on how each line was recorded.
+- `README.md`, `CHANGELOG.md`.
+
+**Decisions:**
+- **Endpoint and format from the current API spec,** not memory: `GET /api/games/user/{username}` with `Accept: application/x-ndjson` (lichess-org/api, `doc/specs/tags/games/api-games-user-username.yaml`, last changed 2026-05-18). Parameters: `max`, `perfType=rapid`, `finished=true`, `ongoing=false`, `pgnInJson=true`, `opening=true`, `clocks=false`, `evals=false`, `sort=dateDesc`. The stored PGN is the full `pgn` field with tags; the analysis service reads it as is.
+- **An identifying `User-Agent` on every request.** The documented endpoint answered with Lichess's generic HTML 404 page until a `User-Agent` was sent; a Lichess maintainer gives that as the cause in lichess-org/api#667. Default `blindspot-chess (+https://github.com/Gergo019/blindspot-chess)`, configurable. The client turns an HTML answer into a `LichessException` rather than storing nothing silently.
+- **Filters checked again in the backend.** Lichess filters by speed and finished state on its side, but product rule 1 must not depend on a query parameter: the mapper skips the statuses `created`, `started`, `aborted`, `noStart` and `unknownFinish` (no reliable result), any speed but rapid, and any variant but standard (the analysis service handles standard chess only). The status check comes first, so a game in progress is always reported as unfinished.
+- **Each run asks for the newest `batchSize` games, with no `since`.** Deduplication by `(account, Lichess game id)` (existing unique constraint, checked before saving) makes re-runs import nothing twice. Rejected: `since=lastSyncedAt`. A game that started before the last sync but finished after it would be missed for good. Cost: each run re-reads up to 20 known games, about a second at the anonymous rate (20 games/s). The batch size is also enforced in the backend, in case the server sends more.
+- **The HTTP call runs outside the transaction** that stores the games, as in `AnalysisService`. A Lichess failure stores nothing and leaves `lastSyncedAt` unchanged.
+- **Result from `winner`:** no winner on a finished game is a draw; otherwise WIN or LOSS from the user's colour. The user is matched on the Lichess user id (the lower-cased name).
+- **`LICHESS_USERNAME` creates a user and a Lichess account at startup.** Not asked for in #5, but without it a running stack has no account to import for until there is sign-up. Empty by default: no account, no requests to Lichess.
+- **Local HTTP stub instead of WireMock** in the integration test: the JDK's `com.sun.net.httpserver` serves the recorded file, so no new dependency. The unit test binds `MockRestServiceServer` to the same builder configuration.
+- **Test fixtures are real, unedited records** (2026-11-13): three finished rapid games of the public account `thibault`, one of his blitz games, and a rapid game in progress recorded from Lichess TV (another player's game). Lichess's filters would not send the last two; they are mixed in to prove the backend skips them.
+
+**Verification:**
+- `mvn verify` in `maven:3.9-eclipse-temurin-25` with the Docker socket: Surefire 34 unit tests (15 new), Failsafe 5 integration tests (`LichessImportIT` 1, `AnalysisEndToEndIT` 1, `SchemaIT` 3), all green.
+- `LichessImportIT`: first run received 5, imported 3, skipped `NOT_FINISHED=1` (`IVGlNazQ`) and `NOT_RAPID=1` (`v31fmkvX`); the three stored games are PENDING with the right colours. Second run: 0 imported, `ALREADY_IMPORTED=3`. Both requests carried `max=10&perfType=rapid&finished=true&ongoing=false`, the `User-Agent` and `Accept: application/x-ndjson`.
+- Manual smoke test against live Lichess (not part of CI): `docker compose up db backend` with `LICHESS_USERNAME=thibault` and batch size 5. The account was created at startup; 10 s later "5 received, 5 imported, skipped {}"; all five rows PENDING, with colour, result, `600+0` and the opening name.
+- CI on PR #27: see below.
+
+**Open points / risks:**
+- No sign-up or account API yet; one account through `LICHESS_USERNAME`.
+- Lichess's rate limit (HTTP 429) is logged as a failure and the account is retried on the next run; there is no back-off beyond the interval.
+- Correspondence and classical games are never imported (rapid only, as specified).
+- The importer does not check the PGN itself; the analysis service rejects an illegal or unfinished PGN with 422, and the game is then marked FAILED (#22).
+
+**Links:** [#5](https://github.com/Gergo019/blindspot-chess/issues/5), [PR #27](https://github.com/Gergo019/blindspot-chess/pull/27), [Lichess API: export games of a user](https://lichess.org/api#tag/games/GET/api/games/user/{username}), [lichess-org/api#667](https://github.com/lichess-org/api/issues/667)
+
 ## 2026-11-13: End-to-end analysis, backend to analysis service (#4 / PR #21)
 
 **Goal:** The backend analyses a stored game through the analysis service and stores the result; a known game is tested end to end (the Phase 1 exit criterion).
