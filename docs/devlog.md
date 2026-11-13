@@ -52,7 +52,7 @@ Through the backend in the Compose stack, the same machine gave 6.9 s, 9.2 s and
   - Three games were imported and analysed one after another, oldest first, all DONE.
   - Restarted with batch 6: three more were imported. I killed the backend (`docker kill`) while game 6 was RUNNING, and restarted it 32 s later.
   - At startup: "Game 6 was RUNNING since 16:46:26 (attempt 1); back to PENDING". The run then analysed games 6, 5 and 4 in order, all DONE; game 6 with 2 attempts.
-- CI on PR #28: see below.
+- CI on PR #28, first run green, **3m01s** in all (PR #27: 3m09s). Backend job 1m28s: 44 unit tests; `SchemaIT` 13.4 s, `AnalysisEndToEndIT` 54.0 s for both tests, including the analysis image build (was 49.4 s with one test), `LichessImportIT` 2.8 s. Analysis-service job 1m06s; Compose stack 1m28s.
 
 **Open points / risks:**
 - When the backend dies mid-call, the analysis service finishes that game anyway (nothing cancels it). After a fast restart, its engine can overlap for a few seconds with the next call, so the cap is "one per backend", not a hard limit in the service.
