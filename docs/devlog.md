@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-13: Post-merge cleanup (PR pending)
+## 2026-11-13: Post-merge cleanup (PR #17)
 
 **Goal:** Repair what the dependency merges and the PR #16 conflict resolution left behind, and put the backend on one Java LTS.
 
@@ -28,13 +28,15 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 
 **Verification:**
 - Locally: the backend image builds with `maven:3.9-eclipse-temurin-25`; it runs on Temurin 25.0.5 LTS; the compiled classes are class file version 69 (Java 25).
-- CI: pending.
+- CI on PR #17, first run green. The backend job ran on Temurin 25.0.5: 15 tests, 0 failures, 0 skipped, the same test classes and timings as the last `main` run on Java 21 (`SchemaIntegrationTest` 14.69 s vs 14.94 s). The analysis-service job ran only checkout, image build and pytest in the image. The Compose stack reported Stockfish 19, depth 16, and database UP.
+- One difference on Java 25, a warning only: JNA (`jna-5.18.1`, used by Testcontainers to talk to Docker) calls a restricted method (`System::load`) and the JVM suggests `--enable-native-access=ALL-UNNAMED`. The existing warnings (Mockito's dynamic agent, the intended duplicate-key violation in a constraint test) are unchanged.
 
 **Open points / risks:**
 - Dependabot reads a Docker tag's leading number as its version. For `maven:3.9-eclipse-temurin-25` that is the Maven version (3.9), not the JDK, so ignoring major updates of `maven` may not stop a JDK change in the tag suffix (the earlier `-21` to `-26` bump changed only the suffix). Watch the next docker PR; if it proposes a new JDK suffix, add an explicit `versions` ignore.
 - Review Dependabot PRs before merging when a feature branch touches the same files; rebase the feature branch instead of merging both sides.
+- Java 25 warns that restricted native calls (JNA in the tests) will be blocked in a future release. Not urgent; when it matters, pass `--enable-native-access=ALL-UNNAMED` to the test JVM (Surefire `argLine`) or follow a Testcontainers/JNA update.
 
-**Links:** [PR #16](https://github.com/Gergo019/blindspot-chess/pull/16), Dependabot PRs [#6](https://github.com/Gergo019/blindspot-chess/pull/6) to [#15](https://github.com/Gergo019/blindspot-chess/pull/15)
+**Links:** [PR #17](https://github.com/Gergo019/blindspot-chess/pull/17), [PR #16](https://github.com/Gergo019/blindspot-chess/pull/16), Dependabot PRs [#6](https://github.com/Gergo019/blindspot-chess/pull/6) to [#15](https://github.com/Gergo019/blindspot-chess/pull/15)
 
 ## 2026-11-13: POST /analyze with pinned Stockfish (#2 / PR #16)
 
