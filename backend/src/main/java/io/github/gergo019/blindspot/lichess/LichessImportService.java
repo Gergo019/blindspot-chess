@@ -69,10 +69,21 @@ public class LichessImportService {
         // A defensive cap on top of the request's max parameter.
         List<LichessGame> received = client.recentRapidGames(username, batchSize).stream().limit(batchSize).toList();
 
-        ImportResult result = tx.execute(status -> store(lichessAccount(accountId), received));
+        ImportResult result = importGames(accountId, received);
         log.info("Lichess import for {}: {} received, {} imported, skipped {}", username, result.received(),
                 result.imported(), result.skipped());
         return result;
+    }
+
+    /**
+     * Stores games already read in the Lichess export format, with the same
+     * rules as a live import: skip what is not importable or already stored,
+     * store the rest as PENDING. The demo data goes through here too.
+     *
+     * @throws IllegalArgumentException if there is no Lichess account with this id
+     */
+    public ImportResult importGames(long accountId, List<LichessGame> received) {
+        return tx.execute(status -> store(lichessAccount(accountId), received));
     }
 
     private ImportResult store(ChessAccount account, List<LichessGame> received) {

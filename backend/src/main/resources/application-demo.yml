@@ -1,0 +1,9 @@
+# Demo profile (SPRING_PROFILES_ACTIVE=demo): loads real games from the Lichess
+# open database for the user "demo" on first start (DemoDataLoader); the normal
+# background analysis does the rest. Works without a Lichess account or token.
+blindspot:
+  lichess:
+    importer:
+      # The demo account is called "demo" on the Lichess platform; never ask the
+      # live Lichess API for that name's games.
+      enabled: false
