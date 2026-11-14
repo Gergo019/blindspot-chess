@@ -10,6 +10,9 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +38,7 @@ import tools.jackson.databind.json.JsonMapper;
 class AnalysisServiceTest {
 
     static final long GAME_ID = 7L;
+    static final Instant STARTED = Instant.parse("2026-11-13T12:00:00Z");
 
     GameRepository games = mock(GameRepository.class);
     MoveEvaluationRepository evaluations = mock(MoveEvaluationRepository.class);
@@ -48,7 +52,8 @@ class AnalysisServiceTest {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://analysis-service");
         server = MockRestServiceServer.bindTo(builder).build();
         service = new AnalysisService(games, evaluations, findings, new AnalysisClient(builder.build()),
-                mock(PlatformTransactionManager.class), JsonMapper.builder().build());
+                mock(PlatformTransactionManager.class), JsonMapper.builder().build(),
+                Clock.fixed(STARTED, ZoneOffset.UTC));
 
         game = TestData.game(TestData.lichessAccount(TestData.user("player")), "g1");
         when(games.findById(GAME_ID)).thenReturn(Optional.of(game));
@@ -90,6 +95,8 @@ class AnalysisServiceTest {
         assertThat(service.analyzeGame(GAME_ID)).isEqualTo(AnalysisStatus.DONE);
 
         assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.DONE);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
+        assertThat(game.getAnalysisStartedAt()).isEqualTo(STARTED);
         ArgumentCaptor<MoveEvaluation> stored = ArgumentCaptor.forClass(MoveEvaluation.class);
         verify(evaluations, org.mockito.Mockito.times(2)).save(stored.capture());
         assertThat(stored.getAllValues()).extracting(MoveEvaluation::getPly).containsExactly(3, 4);

@@ -4,6 +4,64 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-13: Background analysis of imported games (#22 / PR #28)
+
+**Goal:** Every imported game gets analysed without anyone triggering it: one game at a time, oldest first, recovering games left RUNNING by a crash, and never retrying failures forever.
+
+**Changes:**
+- `backend/.../analysis/AnalysisJob.java`: `runOnce()` recovers stuck games, then takes the oldest PENDING games (by `played_at`, at most `batch-size`) and analyses them with `workers` threads (one: the job's own thread, in order). `recoverStuckGames()` handles RUNNING games whose attempt started more than `stuck-after` ago. A game that throws (for example, no longer PENDING) is logged and skipped; the batch goes on.
+- `AnalysisJobScheduler.java`: recovery at `ApplicationReadyEvent`, then `runOnce()` every `interval` after the previous run ends. Switched off with `blindspot.analysis.job.enabled=false` (the integration tests do this and call the job directly).
+- `AnalysisJobProperties.java`: `ANALYSIS_WORKERS` (1), `ANALYSIS_BATCH_SIZE` (10), `ANALYSIS_INTERVAL` (30s), `ANALYSIS_STUCK_AFTER` (30m), `ANALYSIS_JOB_ENABLED`. Startup fails if `stuck-after` is not longer than the read timeout, or workers or batch size is below 1.
+- `Game`: `startAnalysis(Instant)` counts the attempt and records its start; `isAnalysisStuck(now, timeout)`; `recoverStuckAnalysis()` (PENDING while attempts < `MAX_ANALYSIS_ATTEMPTS` = 2, otherwise FAILED). `AnalysisService` reads the time from the `Clock` bean.
+- `V3__analysis_attempts.sql`: `analysis_attempts INTEGER NOT NULL DEFAULT 0` and `analysis_started_at TIMESTAMPTZ` on `games`. Games already RUNNING get one attempt, started at `updated_at`. Check constraints: attempts ≥ 0, and RUNNING requires a start time. V1 and V2 untouched.
+- `GameRepository.findByAnalysisStatusAndAnalysisStartedAtBefore`.
+- `application.yml`: the job settings; `spring.task.scheduling.pool.size: 2`. `docker-compose.yml`, `.env.example`.
+- Tests:
+  - `AnalysisJobTest` (6): order, batch, the worker cap, one failure not stopping the batch, recovery once then FAILED, settings checks.
+  - `DomainRulesTest` (+4) and `AnalysisServiceTest`: attempt and start time.
+  - `SchemaIT` (+3): the stuck query on PostgreSQL, and the V3 constraints.
+  - `AnalysisEndToEndIT` (+1): import fixture → PENDING → `AnalysisJob.runOnce()` → DONE, with the HANGING_PIECE finding.
+- Fixtures:
+  - `lichess/knight-game.ndjson`: a hand-written record in the export format, labelled as not recorded.
+  - The players of the recorded game in progress are replaced with `tv_white_player` and `tv_black_player`, and their flair is removed.
+
+**Decisions:**
+- **Concurrency is capped in the backend, at one game at a time by default.** Reason: Stockfish runs single-threaded on purpose (reproducible results), each `/analyze` call starts its own engine, and the analysis container should not be overloaded. The backend is the analysis service's only caller and already owns the queue (PENDING games), so a cap there is enough today. Rejected for now: a cap inside the analysis service (a semaphore or a 429). It would also protect against other callers, but there are none, and the backend would then need retry logic for refused calls. Revisit if the service gets a second caller or the backend runs as several instances. The single-worker case runs on the job thread, so no thread pool is created.
+- **Read timeout stays at 180 s, now from a measurement** (below). At about 165 ms per half-move in the worst observed case, the longest game the service accepts (300 half-moves) takes about 50 s. 180 s leaves a margin of about 3.6× for slower hardware such as CI runners.
+- **Stuck = RUNNING longer than `stuck-after` (30 min), checked at startup and on every run,** as specified. A crashed attempt sends the game back to PENDING once (attempt 1), and a second stuck attempt marks it FAILED. Because `stuck-after` must exceed the read timeout, a live call has always timed out (and marked the game FAILED) before recovery could touch it. Rejected: resetting every RUNNING game at startup. That is simpler with one instance, but wrong as soon as two instances share the database.
+- **FAILED stays FAILED.** The job only selects PENDING games, and the reason is in the log (`AnalysisService` logs the status code and the service's message). The domain still allows a manual retry from FAILED, but nothing does it automatically.
+- **Oldest first by `played_at`,** the game's own date, using the existing `findByAnalysisStatusOrderByPlayedAtAsc`. Rejected: import order (`created_at`). Within one import the two differ only by the batch's internal order.
+- **Two scheduler threads.** Spring's default scheduler has one thread, so a ten-game analysis run (about a minute or more) would delay the Lichess import.
+- **The end-to-end test calls the job directly** with scheduling switched off, instead of waiting for the schedule. Reason: a deterministic test; the scheduling itself is a single annotation.
+
+**Timing (one real game at depth 16):** the analysis service's runtime image (Stockfish 19, Threads=1, Hash 64 MB, depth 16), on Docker Desktop on an Apple M4 (arm64). The four finished fixture games, each analysed twice:
+
+| Game | Half-moves | Run 1 | Run 2 | ms per half-move |
+|---|---|---|---|---|
+| `aDN8u0zd` (rapid) | 40 | 6.6 s | 6.6 s | 165 |
+| `ZlkPN7gH` (rapid) | 56 | 6.2 s | 7.0 s | 110 to 125 |
+| `k8OVq8Y5` (rapid) | 77 | 9.0 s | 9.0 s | 117 |
+| `v31fmkvX` (blitz, longest available) | 226 | 26.7 s | 23.6 s | 105 to 118 |
+
+Through the backend in the Compose stack, the same machine gave 6.9 s, 9.2 s and 6.2 s for the first three. Not measured on the CI runner (x86-64, slower per core); the end-to-end test's knight game is too short to tell.
+
+**Verification:**
+- `mvn verify` in `maven:3.9-eclipse-temurin-25` with the Docker socket, green on the first run. Surefire: 44 unit tests (10 new). Failsafe: 9 integration tests (`AnalysisEndToEndIT` 2, `SchemaIT` 6, `LichessImportIT` 1). Flyway applied V1 to V3.
+- `AnalysisEndToEndIT`, new test: the knight fixture was imported as `knightE2` (White, LOSS, PENDING); one `runOnce()` analysed 1 game, DONE, attempt 1; 6 evaluations; one `HANGING_PIECE` finding on ply 5 with `hanging-0.2`, evidence starting `e5d4`; a second run analysed nothing.
+- Manual, full Compose stack against live Lichess (`LICHESS_USERNAME=thibault`, import batch 3, then 6; for the test only: read timeout 20 s, `stuck-after` 30 s):
+  - Three games were imported and analysed one after another, oldest first, all DONE.
+  - Restarted with batch 6: three more were imported. I killed the backend (`docker kill`) while game 6 was RUNNING, and restarted it 32 s later.
+  - At startup: "Game 6 was RUNNING since 16:46:26 (attempt 1); back to PENDING". The run then analysed games 6, 5 and 4 in order, all DONE; game 6 with 2 attempts.
+- CI on PR #28, first run green, **3m01s** in all (PR #27: 3m09s). Backend job 1m28s: 44 unit tests; `SchemaIT` 13.4 s, `AnalysisEndToEndIT` 54.0 s for both tests, including the analysis image build (was 49.4 s with one test), `LichessImportIT` 2.8 s. Analysis-service job 1m06s; Compose stack 1m28s.
+
+**Open points / risks:**
+- When the backend dies mid-call, the analysis service finishes that game anyway (nothing cancels it). After a fast restart, its engine can overlap for a few seconds with the next call, so the cap is "one per backend", not a hard limit in the service.
+- One backend instance is assumed. Two instances could pick the same PENDING game: `startAnalysis` would fail for the second, which is logged and skipped. No locking (`SELECT ... FOR UPDATE SKIP LOCKED`) yet.
+- The batch size bounds a run, not the backlog: with 1 worker and about 7 s a game, a run of 10 games takes about 70 s, plus the 30 s pause, which is roughly 360 rapid games an hour. That is plenty for one account's 20-game imports.
+- Timing is from one Apple M4. A CI-runner measurement would firm up the 3.6× margin.
+
+**Links:** [#22](https://github.com/Gergo019/blindspot-chess/issues/22), [PR #28](https://github.com/Gergo019/blindspot-chess/pull/28), [#2 devlog on unbounded engines](#2026-11-13-post-analyze-with-pinned-stockfish-2--pr-16)
+
 ## 2026-11-13: Lichess import of recent completed rapid games (#5 / PR #27)
 
 **Goal:** Import a user's recent completed rapid games from Lichess in the background, bounded and deduplicated, and store them as PENDING. Analysing them is #22.

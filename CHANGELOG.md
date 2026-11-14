@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Background analysis of imported games (#22): `AnalysisJob` analyses the oldest PENDING games, a bounded batch per run, `ANALYSIS_WORKERS` at a time (default 1). A game stuck in RUNNING longer than `ANALYSIS_STUCK_AFTER` (default 30 min) goes back to PENDING once, then FAILED; recovery runs at startup and on every run. FAILED games are not retried automatically
+- Flyway `V3`: `analysis_attempts` and `analysis_started_at` on `games`, with check constraints (#22)
 - Lichess import (#5): a background job fetches each Lichess account's newest finished rapid games from the game export API (NDJSON), at most `LICHESS_IMPORT_BATCH_SIZE` per run, and stores them as PENDING; games in progress, other speeds and variants, and games already stored (by Lichess game id) are skipped. Sends an identifying `User-Agent` (`LICHESS_USER_AGENT`) and the optional `LICHESS_API_TOKEN`. `LICHESS_USERNAME` creates the account to import for at startup. Tested against recorded Lichess responses
 - Backend analyses stored games through the analysis service: `AnalysisClient` (RestClient, connect timeout 2 s, configurable read timeout, default 180 s) and `AnalysisService.analyzeGame`, which stores move evaluations and findings with their facts and never leaves a game RUNNING (#4)
 - Flyway `V2`: `facts` JSONB column on `mistake_findings` (#4)
@@ -28,6 +30,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- Analysis read timeout (`ANALYSIS_SERVICE_READ_TIMEOUT`, 180 s) is now backed by a measurement: 105 to 165 ms per half-move at depth 16, about 50 s for the longest accepted game (#22)
+- The Spring scheduler has two threads, so a long analysis run does not hold up the Lichess import (#22)
+- Lichess test fixture: the two players of the recorded game in progress are replaced with placeholder names (#22)
 - Backend tests split: unit tests (`*Test`) with Surefire, integration tests (`*IT`) with Failsafe in `mvn verify`; `SchemaIntegrationTest` renamed to `SchemaIT` (#4)
 - Backend on Java 25 LTS everywhere: compiler target, CI, Maven build image (`maven:3.9-eclipse-temurin-25`) and runtime image (`eclipse-temurin:25-jre`)
 - Dependabot opens one grouped PR per ecosystem; Java and Python base-image upgrades are done by hand

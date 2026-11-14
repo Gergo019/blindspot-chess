@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -29,6 +30,7 @@ import io.github.gergo019.blindspot.analysis.Motif;
 import io.github.gergo019.blindspot.analysis.MoveEvaluation;
 import io.github.gergo019.blindspot.analysis.MoveEvaluationRepository;
 import io.github.gergo019.blindspot.game.Game;
+import io.github.gergo019.blindspot.game.GameEnums.AnalysisStatus;
 import io.github.gergo019.blindspot.game.GameRepository;
 import io.github.gergo019.blindspot.health.HealthController;
 import io.github.gergo019.blindspot.training.Drill;
@@ -40,7 +42,7 @@ import io.github.gergo019.blindspot.training.DrillRepository;
  * itself proves that the Flyway migration runs and that Hibernate's schema
  * validation accepts every entity mapping.
  */
-@SpringBootTest(properties = "blindspot.lichess.importer.enabled=false")
+@SpringBootTest(properties = { "blindspot.lichess.importer.enabled=false", "blindspot.analysis.job.enabled=false" })
 @Testcontainers
 @Transactional
 class SchemaIT {
@@ -60,6 +62,7 @@ class SchemaIT {
     @Autowired ExplanationRepository explanations;
     @Autowired DrillRepository drills;
     @Autowired DrillAttemptRepository attempts;
+    @Autowired JdbcTemplate jdbc;
 
     @Test
     void healthReportsDatabaseUp() {
@@ -113,6 +116,42 @@ class SchemaIT {
         games.saveAndFlush(TestData.game(account, "same-id"));
 
         assertThatThrownBy(() -> games.saveAndFlush(TestData.game(account, "same-id")))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void stuckAnalysisQueryFindsOnlyGamesRunningSinceBeforeTheCutoff() {
+        ChessAccount account = accounts.save(TestData.lichessAccount(users.save(TestData.user("stuck"))));
+        Instant cutoff = Instant.parse("2026-11-13T12:00:00Z");
+        Game stuck = TestData.game(account, "stuck");
+        stuck.startAnalysis(cutoff.minusSeconds(60));
+        Game recent = TestData.game(account, "recent");
+        recent.startAnalysis(cutoff.plusSeconds(60));
+        Game pending = TestData.game(account, "pending");
+        games.saveAllAndFlush(java.util.List.of(stuck, recent, pending));
+
+        assertThat(games.findByAnalysisStatusAndAnalysisStartedAtBefore(AnalysisStatus.RUNNING, cutoff))
+                .extracting(Game::getExternalId).containsExactly("stuck");
+        Game reloaded = games.findById(stuck.getId()).orElseThrow();
+        assertThat(reloaded.getAnalysisAttempts()).isEqualTo(1);
+        assertThat(reloaded.getAnalysisStartedAt()).isEqualTo(cutoff.minusSeconds(60));
+    }
+
+    @Test
+    void runningGameMustHaveAStartTimeInTheDatabase() {
+        ChessAccount account = accounts.save(TestData.lichessAccount(users.save(TestData.user("nostart"))));
+        Game game = games.saveAndFlush(TestData.game(account, "nostart"));
+
+        assertThatThrownBy(() -> jdbc.update("UPDATE games SET analysis_status = 'RUNNING' WHERE id = ?", game.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void analysisAttemptsCannotBeNegative() {
+        ChessAccount account = accounts.save(TestData.lichessAccount(users.save(TestData.user("negative"))));
+        Game game = games.saveAndFlush(TestData.game(account, "negative"));
+
+        assertThatThrownBy(() -> jdbc.update("UPDATE games SET analysis_attempts = -1 WHERE id = ?", game.getId()))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 }

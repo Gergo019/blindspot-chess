@@ -2,16 +2,22 @@ package io.github.gergo019.blindspot.analysis;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -36,6 +42,9 @@ import io.github.gergo019.blindspot.game.GameEnums.GameResult;
 import io.github.gergo019.blindspot.game.GameEnums.PieceColor;
 import io.github.gergo019.blindspot.game.GameEnums.Speed;
 import io.github.gergo019.blindspot.game.GameRepository;
+import io.github.gergo019.blindspot.lichess.LichessImportService;
+
+import com.sun.net.httpserver.HttpServer;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -44,9 +53,11 @@ import tools.jackson.databind.json.JsonMapper;
  * Phase 1 exit criterion: one known finished game goes through the backend,
  * the real analysis service (built from ../analysis-service/Dockerfile, the
  * runtime target, with its pinned Stockfish) and PostgreSQL, and the expected
- * motif comes back with a replayable evidence line.
+ * motif comes back with a replayable evidence line. A second test runs the
+ * same game the way production does: imported from a (recorded-format)
+ * Lichess export, stored PENDING, analysed by the background job.
  */
-@SpringBootTest(properties = "blindspot.lichess.importer.enabled=false")
+@SpringBootTest(properties = { "blindspot.lichess.importer.enabled=false", "blindspot.analysis.job.enabled=false" })
 @Testcontainers
 class AnalysisEndToEndIT {
 
@@ -70,14 +81,42 @@ class AnalysisEndToEndIT {
             .waitingFor(Wait.forHttp("/health").forStatusCode(200))
             .withStartupTimeout(Duration.ofMinutes(5));
 
+    /** Stands in for Lichess: answers every game export with the knight-game fixture. */
+    static HttpServer lichess;
+
+    @BeforeAll
+    static void startFakeLichess() throws IOException {
+        byte[] export;
+        try (InputStream in = AnalysisEndToEndIT.class.getClassLoader()
+                .getResourceAsStream("lichess/knight-game.ndjson")) {
+            export = in.readAllBytes();
+        }
+        lichess = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        lichess.createContext("/api/games/user/", exchange -> {
+            exchange.getResponseHeaders().add("Content-Type", "application/x-ndjson");
+            exchange.sendResponseHeaders(200, export.length);
+            exchange.getResponseBody().write(export);
+            exchange.close();
+        });
+        lichess.start();
+    }
+
+    @AfterAll
+    static void stopFakeLichess() {
+        lichess.stop(0);
+    }
+
     @DynamicPropertySource
-    static void analysisServiceUrl(DynamicPropertyRegistry registry) {
+    static void serviceUrls(DynamicPropertyRegistry registry) {
         registry.add("blindspot.analysis-service-url",
                 () -> "http://" + analysisContainer.getHost() + ":" + analysisContainer.getMappedPort(8000));
+        registry.add("blindspot.lichess.base-url", () -> "http://127.0.0.1:" + lichess.getAddress().getPort());
     }
 
     @Autowired AnalysisService analysisService;
     @Autowired AnalysisClient analysisClient;
+    @Autowired AnalysisJob analysisJob;
+    @Autowired LichessImportService importService;
     @Autowired UserRepository users;
     @Autowired ChessAccountRepository accounts;
     @Autowired GameRepository games;
@@ -127,6 +166,47 @@ class AnalysisEndToEndIT {
         assertThat(facts.get("square").asString()).isEqualTo("d4");
 
         assertEvidenceLineIsLegal(moves, finding.evidence());
+    }
+
+    @Test
+    void importedGameGoesFromPendingToDoneThroughTheBackgroundJob() {
+        User user = users.save(TestData.user("fixture_white"));
+        ChessAccount account = accounts.save(TestData.lichessAccount(user));
+
+        var imported = importService.importRecentGames(account.getId());
+
+        assertThat(imported.imported()).isEqualTo(1);
+        Game game = games.findByAccountIdOrderByPlayedAtDesc(account.getId(), Pageable.unpaged()).get(0);
+        assertThat(game.getExternalId()).isEqualTo("knightE2");
+        assertThat(game.getUserColor()).isEqualTo(PieceColor.WHITE);
+        assertThat(game.getResult()).isEqualTo(GameResult.LOSS);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+
+        AnalysisJob.RunResult run = analysisJob.runOnce();
+
+        assertThat(run.analysed()).isEqualTo(1);
+        assertThat(run.done()).isEqualTo(1);
+        Game analysed = games.findById(game.getId()).orElseThrow();
+        assertThat(analysed.getAnalysisStatus()).isEqualTo(AnalysisStatus.DONE);
+        assertThat(analysed.getAnalysisAttempts()).isEqualTo(1);
+
+        List<MoveEvaluation> moves = evaluations.findByGameIdOrderByPlyAsc(game.getId());
+        assertThat(moves).extracting(MoveEvaluation::getMoveUci)
+                .containsExactly("e2e4", "e7e5", "g1f3", "d7d6", "f3d4", "e5d4");
+        record Stored(long gameId, int ply, String evidence, String detectorVersion) {
+        }
+        List<Stored> stored = tx.execute(s -> findings.findByUserAndMotif(user.getId(), Motif.HANGING_PIECE).stream()
+                .map(f -> new Stored(f.getMoveEvaluation().getGame().getId(), f.getMoveEvaluation().getPly(),
+                        f.getEvidenceLineUci(), f.getDetectorVersion()))
+                .toList());
+        assertThat(stored).hasSize(1);
+        assertThat(stored.get(0).gameId()).isEqualTo(game.getId());
+        assertThat(stored.get(0).ply()).isEqualTo(KNIGHT_PLY);
+        assertThat(stored.get(0).detectorVersion()).isEqualTo("hanging-0.2");
+        assertThat(stored.get(0).evidence()).startsWith("e5d4");
+
+        // Nothing left to do: a second run analyses nothing.
+        assertThat(analysisJob.runOnce().analysed()).isZero();
     }
 
     /**

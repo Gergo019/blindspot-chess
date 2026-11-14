@@ -20,13 +20,30 @@ spring:
   flyway:
     locations: classpath:db/migration
 
+  task:
+    scheduling:
+      pool:
+        # The Lichess import and the analysis job each get a thread, so a long
+        # analysis run does not hold up an import.
+        size: 2
+
 server:
   port: 8080
 
 blindspot:
   analysis-service-url: ${ANALYSIS_SERVICE_URL:http://localhost:8000}
-  # One call analyses a whole game at a fixed depth; long games take minutes.
+  # One call analyses a whole game at depth 16: measured 105-165 ms per half-move,
+  # so the longest accepted game (300 half-moves) takes about 50 s (devlog, #22).
   analysis-service-read-timeout: ${ANALYSIS_SERVICE_READ_TIMEOUT:180s}
+  analysis:
+    job:
+      enabled: ${ANALYSIS_JOB_ENABLED:true}
+      # Games analysed at the same time; each is one single-threaded Stockfish.
+      workers: ${ANALYSIS_WORKERS:1}
+      batch-size: ${ANALYSIS_BATCH_SIZE:10}
+      interval: ${ANALYSIS_INTERVAL:30s}
+      # RUNNING longer than this counts as stuck (crash or restart); must exceed the read timeout.
+      stuck-after: ${ANALYSIS_STUCK_AFTER:30m}
   lichess:
     base-url: ${LICHESS_BASE_URL:https://lichess.org}
     api-token: ${LICHESS_API_TOKEN:}
