@@ -42,7 +42,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - "Demo data: user 'demo' with 20 games"; two analysis runs of 10; all 20 games DONE **247 s** after `docker compose up` (image build included).
   - The stored findings are exactly the 7 from the selection run, on the same plies (9, 36, 66, 20, 22, 16, 47), all `hanging-0.2`.
   - A backend restart logged "user 'demo' exists, nothing loaded", and the game count stayed 20.
-- CI on PR #29: see below.
+- CI on PR #29, first run green, **2m54s** in all. Backend job 1m35s: 44 unit tests; `DemoDataIT` 2.7 s, `LichessImportIT` 2.8 s, `SchemaIT` 14.9 s, `AnalysisEndToEndIT` 53.8 s (includes the analysis image build). Analysis-service job 58s; Compose stack 1m08s.
 
 **Clarification for PR #28 (crash recovery):** startup recovery does not ignore the stuck timeout; it applies the same `stuck-after` rule as every run. The live test in #28 used `ANALYSIS_STUCK_AFTER=30s` (and a 20 s read timeout) and restarted 32 s after the kill, which is why the game was recovered at startup. With the default 30 min, a crashed game is recovered by the first check after 30 minutes.
 
