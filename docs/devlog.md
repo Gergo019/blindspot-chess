@@ -4,6 +4,46 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-16: Release v0.1.0 (PR #48)
+
+**Goal:** Close Phase 1 with a tagged release: a fresh clone runs end to end with one command, and the CHANGELOG, README and this log say exactly what v0.1.0 does and does not do.
+
+**What Phase 1 delivered:**
+- **Import:** recent finished Lichess rapid games, fetched in the background in bounded batches, stored as PENDING (#5).
+- **Analysis:** a FastAPI service with one pinned, checksum-verified Stockfish 19 binary, single-threaded at a fixed depth and hash. `POST /analyze` evaluates every half-move and classifies it by the drop in winning chances (Lichess formula) (#2). The backend analyses PENDING games in a background job, one at a time, and stores evaluations and findings (#4, #22).
+- **Hanging-piece detection** with an evidence line and typed facts, now `hanging-0.4` ([ADR 0004](decisions/0004-hanging-piece-detector.md)) (#3, #31).
+- **Demo data:** 20 real rapid games from the Lichess open database (2013-01, CC0), loaded by the `demo` profile, so the whole pipeline runs without a Lichess account (#23).
+- **Schema:** Flyway V1 to V4. **Tests:** unit and Testcontainers integration tests, an end-to-end test through the real analysis image, and analysis-service tests inside the image. **CI** for all three jobs.
+
+**Hardening after the 2026-11-14 code review (H1 to H4):**
+- **#30, failures by kind** ([ADR 0005](decisions/0005-failure-handling-in-background-analysis.md)): a rejected game or an unreadable or unstorable response is handled without losing data; an outage of the analysis service no longer fails games; games are claimed with one conditional update.
+- **#31, hanging-piece baseline:** the loss is measured against the engine's best line, through forcing sequences, and an exchange on the moved piece's square is judged as a whole (`hanging-0.3`, `hanging-0.4`).
+- **#32, PGN validation:** every malformed or impossible game is a 422, never a 500; a property-based test guards this.
+- **#33, reproducibility:** golden files pin the full `/analyze` output, dependencies are locked with hashes, base images pinned by digest, and threads and hash size are stored with every evaluation ([ADR 0002](decisions/0002-python-analysis-service.md)).
+
+**Changes in this PR:**
+- `CHANGELOG.md`: everything under Unreleased moved to `[0.1.0] - 2026-11-16`, regrouped as Added / Changed / Fixed (the hardening items that corrected wrong behaviour are under Fixed), an empty Unreleased section above it, and compare links.
+- `README.md`: status line for v0.1.0; the analysis-service health row also names threads and hash size.
+- `.env.example`: two stale comments fixed. The analysis job takes the *newest* PENDING games (since #30, the comment still said oldest), and evaluations record threads and hash size too (since #33).
+
+**Verification:**
+- **Getting started on a fresh clone**, run exactly as written (fresh `git clone` of main at 87295fe into a temp folder, `cp .env.example .env`, `docker compose up --build`, here with `-d`), on an Apple Silicon Mac: images built in about a minute (with the local Docker layer cache; the clone itself was fresh); both `/health` endpoints UP (the analysis service reports Stockfish 19, depth 16, 1 thread, 64 MB). The `demo` profile loaded 20 games as PENDING; all 20 were DONE about 3.5 minutes after they were created (17:43:26 to 17:47:04 UTC), none FAILED.
+- The README's findings query returned 5 `hanging-0.4` findings, as documented: 008j6z3b (White, ply 9, Qe2), 008pkspi (Black, ply 36, Rb6), 00ckuzm1 (Black, ply 66, Rc3+), 00jay4x6 (Black, ply 22, Be7), 00lv6mdm (Black, ply 16, Bh3). The first two are the golden-file games of #33.
+- All 1,238 stored evaluations record 1 thread and 64 MB (V4). No WARN or ERROR lines in the backend log.
+- CI on PR #48 green on the first run: analysis service 2m20s, backend 1m38s, Compose stack 1m26s.
+
+**Known limits:**
+- Low-severity review items are collected in [#37](https://github.com/Gergo019/blindspot-chess/issues/37): mate handling in the classifier, `engine_version` width, `BaseEntity` clock, the classification formula not re-checked against lila, an N+1 on the future findings screen, per-account Lichess rate limiting, and the 75-move rule.
+- [#41](https://github.com/Gergo019/blindspot-chess/issues/41): a line still forcing at the 8-ply cap is not judged, so some real hung pieces are missed (known case: Qc2).
+- No user interface yet; findings are visible only in the database.
+
+**What Phase 2 starts with:**
+- [#26](https://github.com/Gergo019/blindspot-chess/issues/26): knight-fork detector (`knight-fork-0.1`, ADR 0006), the second motif.
+- [#34](https://github.com/Gergo019/blindspot-chess/issues/34): cause and defence facts for HANGING_PIECE (already attacked, defended, why lost), which typed claims need before any explanation.
+- [#35](https://github.com/Gergo019/blindspot-chess/issues/35): decide whether a loose piece lost to a check or double attack is a HANGING_PIECE sub-type or a third motif.
+
+**Links:** [CHANGELOG 0.1.0](../CHANGELOG.md), [PR #48](https://github.com/Gergo019/blindspot-chess/pull/48), release v0.1.0 (tagged on the merge commit after merging)
+
 ## 2026-11-16: Golden-file reproducibility test, pinned dependencies, engine threads and hash size (#33 / PR #46)
 
 **Goal:** Make "analysis is reproducible" (product rule 4) checkable instead of assumed. Phase 1 hardening item H4 from the 2026-11-14 code review.
