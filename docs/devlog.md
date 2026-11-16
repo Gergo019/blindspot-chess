@@ -67,6 +67,8 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - The 17 remaining games stayed PENDING with 0 attempts.
   - After `docker compose start analysis-service`, the run at 11:11:34 (4 min after the last) analysed 10 games, and the next one, 30 s after it ended, the last 7. All 20 games were DONE with `analysis_attempts` = 1, with the same 7 findings on the same plies as in #23.
 
+- CI on PR #38, first run green, **2m51s** in all. Backend job 1m32s: 67 unit tests; `AnalysisFailureHandlingIT` 4.7 s, `AnalysisEndToEndIT` 43.1 s, `SchemaIT` 13.3 s, `LichessImportIT` 2.2 s, `DemoDataIT` 2.0 s. Analysis-service job 1m10s; Compose stack 1m15s, now including the wait for the healthcheck.
+
 **Open points / risks:**
 - **Newest first can starve old games** if imports outpaced analysis for a long time. It is bounded today: the importer fetches at most the newest 20 games per account and run, and one game takes seconds.
 - A late store after recovery (a game recovered from RUNNING while its original call is still running) is still unhandled. It needs a read timeout longer than `stuck-after`, which the startup check prevents. Listed in the review backlog (#37).
