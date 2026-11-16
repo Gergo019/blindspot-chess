@@ -30,6 +30,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 **Verification:**
 - Analysis-service tests in the Docker test image: 115 passed.
 - Backend `mvn verify` in Docker: 75 unit tests and 22 integration tests green, including `AnalysisEndToEndIT` through the rebuilt analysis image (`hanging-0.4`).
+- CI on PR #44, first run green, **3m01s** in all. Analysis-service job 1m05s (115 tests in the image). Backend job 1m50s: 75 unit tests and 22 integration tests, `AnalysisEndToEndIT` 54.1 s. Compose stack 1m07s.
 
 **Open points / risks:**
 - Material lost elsewhere in a line that starts with a recaptured capture is still not attributed (known gap, ADR 0004).
