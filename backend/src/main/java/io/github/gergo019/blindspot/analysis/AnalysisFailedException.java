@@ -19,8 +19,11 @@ public class AnalysisFailedException extends RuntimeException {
         /** The service accepted the connection but did not answer within the read timeout. */
         TIMEOUT,
         /**
-         * The service answered 2xx, but with no body or a body that cannot be
-         * read: most likely a contract mismatch between backend and service.
+         * The service answered 2xx, but with no body, a body that cannot be
+         * read, or content the backend cannot store (an unknown
+         * classification or motif, values the domain rules or the database
+         * reject): most likely a contract mismatch between backend and
+         * service.
          */
         INVALID_RESPONSE
     }

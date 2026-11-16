@@ -1,16 +1,20 @@
 package io.github.gergo019.blindspot.analysis;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import io.github.gergo019.blindspot.analysis.AnalysisFailedException.Kind;
 import io.github.gergo019.blindspot.analysis.AnalyzeApi.AnalyzeRequest;
 import io.github.gergo019.blindspot.analysis.AnalyzeApi.AnalyzeResponse;
 import io.github.gergo019.blindspot.analysis.AnalyzeApi.FindingDto;
@@ -36,8 +40,10 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  * <li>rejected (422): FAILED at once;</li>
  * <li>service unavailable: back to PENDING, the attempt given back;</li>
- * <li>read timeout or an unreadable response: back to PENDING while
- * attempts remain, then FAILED.</li>
+ * <li>read timeout: back to PENDING while attempts remain, then FAILED;</li>
+ * <li>a response that cannot be read or stored: the same, logged at ERROR,
+ * and the run stops (most likely a contract mismatch, which would hit every
+ * game). Nothing of it is stored: one transaction, rolled back.</li>
  * </ul>
  */
 @Service
@@ -49,13 +55,17 @@ public class AnalysisService {
     public enum Outcome {
         /** Analysed and stored; the game is DONE. */
         DONE,
-        /**
-         * The game is FAILED: rejected by the service, a response that could not be stored, or a timeout or
-         * unreadable response on its last attempt.
-         */
+        /** The game is FAILED: rejected by the service, an unexpected error, or a timeout on its last attempt. */
         FAILED,
-        /** Timed out or got an unreadable response with attempts left; PENDING again, the attempt counted. */
+        /** Timed out with attempts left; PENDING again, the attempt counted. */
         RETRY,
+        /**
+         * The response could not be read or stored, with attempts left; PENDING again, the attempt counted.
+         * The run stops.
+         */
+        INVALID_RESPONSE_RETRY,
+        /** The response could not be read or stored on the game's last attempt; the game is FAILED. The run stops. */
+        INVALID_RESPONSE_FAILED,
         /** The service was unavailable; the game is PENDING again and the attempt did not count. */
         SERVICE_UNAVAILABLE,
         /** The game was not PENDING (or does not exist), so this call did nothing. */
@@ -108,7 +118,8 @@ public class AnalysisService {
             return switch (e.getKind()) {
                 case REJECTED -> fail(gameId, e);
                 case UNAVAILABLE -> release(gameId, e);
-                case TIMEOUT, INVALID_RESPONSE -> retryOrFail(gameId, e);
+                case TIMEOUT -> retryOrFail(gameId, e);
+                case INVALID_RESPONSE -> invalidResponse(gameId, e);
             };
         } catch (RuntimeException e) {
             return fail(gameId, e);
@@ -120,40 +131,69 @@ public class AnalysisService {
                     response.moves().size(), response.findings().size(), response.engine().name(),
                     response.engine().version(), response.engine().depth());
             return Outcome.DONE;
+        } catch (AnalysisFailedException e) {
+            // Thrown by store(): the response cannot be stored. The transaction rolled back.
+            return invalidResponse(gameId, e);
         } catch (RuntimeException e) {
             return fail(gameId, e);
         }
     }
 
+    /**
+     * Stores the evaluations and findings and marks the game DONE, all in the
+     * caller's transaction. The response is first turned into entities in
+     * memory, so content the backend does not accept (an unknown
+     * classification or motif, a score or finding the domain rules reject,
+     * missing fields) fails before anything is written. Content the database
+     * rejects (a duplicate ply) fails on the flush, and the transaction rolls
+     * back. Both become an {@link AnalysisFailedException} of kind
+     * {@link Kind#INVALID_RESPONSE}.
+     */
     private void store(long gameId, AnalyzeResponse response) {
         Game game = load(gameId);
-        EngineRun engine = new EngineRun(response.engine().name() + " " + response.engine().version(),
-                response.engine().depth());
-
-        Map<Integer, MoveEvaluation> byPly = new HashMap<>();
-        for (MoveDto move : response.moves()) {
-            MoveEvaluation evaluation = evaluations.save(new MoveEvaluation(game, move.ply(), move.byUser(),
-                    move.fenBefore(), move.moveUci(), move.moveSan(), move.bestMoveUci(),
-                    score(move.scoreBefore()), score(move.scoreAfter()), engine,
-                    MoveClassification.valueOf(move.classification())));
-            byPly.put(move.ply(), evaluation);
-        }
-
-        for (FindingDto finding : response.findings()) {
-            MoveEvaluation evaluation = byPly.get(finding.ply());
-            if (evaluation == null || !evaluation.isTrainableMistake()) {
-                // The analysis service only reports findings for the user's mistakes and
-                // blunders; anything else would violate MistakeFinding's rule.
-                log.warn("Game {}: skipping {} finding on ply {}, not a user mistake or blunder", gameId,
-                        finding.motif(), finding.ply());
-                continue;
+        List<MoveEvaluation> moves = new ArrayList<>();
+        List<MistakeFinding> found = new ArrayList<>();
+        try {
+            EngineRun engine = new EngineRun(response.engine().name() + " " + response.engine().version(),
+                    response.engine().depth());
+            Map<Integer, MoveEvaluation> byPly = new HashMap<>();
+            for (MoveDto move : response.moves()) {
+                MoveEvaluation evaluation = new MoveEvaluation(game, move.ply(), move.byUser(), move.fenBefore(),
+                        move.moveUci(), move.moveSan(), move.bestMoveUci(), score(move.scoreBefore()),
+                        score(move.scoreAfter()), engine, MoveClassification.valueOf(move.classification()));
+                moves.add(evaluation);
+                byPly.put(move.ply(), evaluation);
             }
-            findings.save(new MistakeFinding(evaluation, Motif.valueOf(finding.motif()), finding.evidenceLineUci(),
-                    finding.detectorVersion(), json.writeValueAsString(finding.facts())));
+            for (FindingDto finding : response.findings()) {
+                MoveEvaluation evaluation = byPly.get(finding.ply());
+                if (evaluation == null || !evaluation.isTrainableMistake()) {
+                    // The analysis service only reports findings for the user's mistakes and
+                    // blunders; anything else would violate MistakeFinding's rule.
+                    log.warn("Game {}: skipping {} finding on ply {}, not a user mistake or blunder", gameId,
+                            finding.motif(), finding.ply());
+                    continue;
+                }
+                found.add(new MistakeFinding(evaluation, Motif.valueOf(finding.motif()), finding.evidenceLineUci(),
+                        finding.detectorVersion(), json.writeValueAsString(finding.facts())));
+            }
+        } catch (RuntimeException e) {
+            throw unstorable(gameId, e);
         }
 
+        try {
+            evaluations.saveAll(moves);
+            findings.saveAll(found);
+            evaluations.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw unstorable(gameId, e);
+        }
         game.completeAnalysis();
         games.save(game);
+    }
+
+    private static AnalysisFailedException unstorable(long gameId, RuntimeException cause) {
+        return new AnalysisFailedException(Kind.INVALID_RESPONSE,
+                "Analysis response for game " + gameId + " cannot be stored: " + cause.getMessage(), 0, cause);
     }
 
     private Outcome fail(long gameId, RuntimeException cause) {
@@ -176,23 +216,28 @@ public class AnalysisService {
         return Outcome.SERVICE_UNAVAILABLE;
     }
 
-    /**
-     * A timeout or an unreadable response: retried once, then FAILED. An
-     * unreadable 2xx body most likely means the backend and the service
-     * disagree on the contract, which needs a person, so it is logged at
-     * ERROR; failing at once would fail every game of the run.
-     */
+    /** A timeout: retried while attempts remain, then FAILED. */
     private Outcome retryOrFail(long gameId, AnalysisFailedException cause) {
-        AnalysisStatus next = updateIfRunning(gameId, Game::retryOrFailAnalysis);
-        boolean retry = next == AnalysisStatus.PENDING;
-        String what = retry ? "back to PENDING, attempt counted" : "marked FAILED after its last attempt";
-        if (cause.getKind() == AnalysisFailedException.Kind.INVALID_RESPONSE) {
-            log.error("Analysis of game {} got an unreadable response (INVALID_RESPONSE), likely a contract "
-                    + "mismatch with the analysis service; {}: {}", gameId, what, cause.getMessage(), cause);
-        } else {
-            log.warn("Analysis of game {} timed out ({}); {}: {}", gameId, cause.getKind(), what, cause.getMessage());
-        }
+        boolean retry = updateIfRunning(gameId, Game::retryOrFailAnalysis) == AnalysisStatus.PENDING;
+        log.warn("Analysis of game {} timed out (TIMEOUT); {}: {}", gameId,
+                retry ? "back to PENDING, attempt counted" : "marked FAILED after its last attempt",
+                cause.getMessage());
         return retry ? Outcome.RETRY : Outcome.FAILED;
+    }
+
+    /**
+     * A response that cannot be read or stored: retried like a timeout, but
+     * logged at ERROR, and the job stops the run. It most likely means the
+     * backend and the service disagree on the contract, which needs a person
+     * and would hit every game; failing at once would fail the whole run.
+     */
+    private Outcome invalidResponse(long gameId, AnalysisFailedException cause) {
+        boolean retry = updateIfRunning(gameId, Game::retryOrFailAnalysis) == AnalysisStatus.PENDING;
+        log.error("Analysis of game {}: the response cannot be read or stored (INVALID_RESPONSE), likely a contract "
+                + "mismatch with the analysis service; {}: {}", gameId,
+                retry ? "back to PENDING, attempt counted" : "marked FAILED after its last attempt",
+                cause.getMessage(), cause);
+        return retry ? Outcome.INVALID_RESPONSE_RETRY : Outcome.INVALID_RESPONSE_FAILED;
     }
 
     /**

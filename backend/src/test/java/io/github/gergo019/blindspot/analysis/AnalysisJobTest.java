@@ -159,6 +159,69 @@ class AnalysisJobTest {
     }
 
     @Test
+    void anInvalidResponseStopsTheBatchWithoutBackingOff() {
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any()))
+                .thenReturn(List.of(game(1L), game(2L), game(3L)));
+        when(analysisService.analyzeGame(1L)).thenReturn(Outcome.DONE);
+        when(analysisService.analyzeGame(2L)).thenReturn(Outcome.INVALID_RESPONSE_RETRY);
+        AnalysisJob job = job(1, 10);
+
+        AnalysisJob.RunResult result = job.runOnce();
+
+        assertThat(result.invalidResponse()).isTrue();
+        assertThat(result.serviceUnavailable()).isFalse();
+        assertThat(result.analysed()).isEqualTo(2);
+        assertThat(result.retried()).isEqualTo(1);
+        verify(analysisService, never()).analyzeGame(3L);
+        assertThat(job.nextDelay()).isEqualTo(Duration.ofSeconds(30));
+    }
+
+    @Test
+    void anInvalidResponseOnTheLastAttemptCountsAsFailedAndStopsTheBatch() {
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any()))
+                .thenReturn(List.of(game(1L), game(2L)));
+        when(analysisService.analyzeGame(1L)).thenReturn(Outcome.INVALID_RESPONSE_FAILED);
+
+        AnalysisJob.RunResult result = job(1, 10).runOnce();
+
+        assertThat(result.invalidResponse()).isTrue();
+        assertThat(result.failed()).isEqualTo(1);
+        verify(analysisService, never()).analyzeGame(2L);
+    }
+
+    @Test
+    void anInvalidResponseStopsStartingGamesWithSeveralWorkers() {
+        List<Game> pending = new ArrayList<>();
+        for (long id = 1; id <= 20; id++) {
+            pending.add(game(id));
+        }
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any())).thenReturn(pending);
+        AtomicInteger calls = new AtomicInteger();
+        when(analysisService.analyzeGame(anyLong())).thenAnswer(call -> {
+            calls.incrementAndGet();
+            return Outcome.INVALID_RESPONSE_RETRY;
+        });
+
+        AnalysisJob.RunResult result = job(2, 20).runOnce();
+
+        assertThat(result.invalidResponse()).isTrue();
+        assertThat(calls.get()).isLessThanOrEqualTo(2);
+    }
+
+    @Test
+    void anInvalidResponseShowsTheServiceIsBack() {
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any()))
+                .thenReturn(List.of(game(1L)));
+        when(analysisService.analyzeGame(1L)).thenReturn(Outcome.SERVICE_UNAVAILABLE, Outcome.INVALID_RESPONSE_RETRY);
+        AnalysisJob job = job(1, 10);
+
+        job.runOnce();
+        assertThat(job.nextDelay()).isEqualTo(Duration.ofSeconds(60));
+        job.runOnce();
+        assertThat(job.nextDelay()).isEqualTo(Duration.ofSeconds(30));
+    }
+
+    @Test
     void timeoutsDoNotStopTheBatch() {
         when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any()))
                 .thenReturn(List.of(game(1L), game(2L), game(3L)));
