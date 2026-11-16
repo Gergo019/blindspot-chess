@@ -158,7 +158,7 @@ class AnalysisEndToEndIT {
         assertThat(stored).hasSize(1);
         Stored finding = stored.get(0);
         assertThat(finding.ply()).isEqualTo(KNIGHT_PLY);
-        assertThat(finding.detectorVersion()).isEqualTo("hanging-0.2");
+        assertThat(finding.detectorVersion()).isEqualTo("hanging-0.3");
         assertThat(finding.evidence()).startsWith("e5d4");
         JsonNode facts = json.readTree(finding.facts());
         assertThat(facts.get("movedPiece").asString()).isEqualTo("knight");
@@ -202,7 +202,7 @@ class AnalysisEndToEndIT {
         assertThat(stored).hasSize(1);
         assertThat(stored.get(0).gameId()).isEqualTo(game.getId());
         assertThat(stored.get(0).ply()).isEqualTo(KNIGHT_PLY);
-        assertThat(stored.get(0).detectorVersion()).isEqualTo("hanging-0.2");
+        assertThat(stored.get(0).detectorVersion()).isEqualTo("hanging-0.3");
         assertThat(stored.get(0).evidence()).startsWith("e5d4");
 
         // Nothing left to do: a second run analyses nothing.

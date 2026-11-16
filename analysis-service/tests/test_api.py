@@ -71,7 +71,7 @@ class TestAnalyze:
         assert set(finding) == {"ply", "motif", "evidenceLineUci", "detectorVersion", "facts"}
         assert finding["ply"] == 3
         assert finding["motif"] == "HANGING_PIECE"
-        assert finding["detectorVersion"] == "hanging-0.2"
+        assert finding["detectorVersion"] == "hanging-0.3"
         assert set(finding["facts"]) == {
             "piece", "square", "capturedBy", "materialLost", "movedPiece", "movedFrom", "movedTo",
         }

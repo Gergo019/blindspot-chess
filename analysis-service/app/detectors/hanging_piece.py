@@ -1,4 +1,4 @@
-"""Hanging-piece detector v0.2. Pure: no engine calls.
+"""Hanging-piece detector v0.3. Pure: no engine calls.
 
 A HANGING_PIECE finding is reported for a user move M when all of these hold
 (ADR 0004):
@@ -7,18 +7,29 @@ A HANGING_PIECE finding is reported for a user move M when all of these hold
    approves of.
 2. The engine's principal variation (PV) from the position after M starts
    with the opponent capturing one of the user's pieces: a knight, bishop,
-   rook or queen. Pawns are out of scope.
+   rook or queen. Pawns are out of scope. If M itself is a capture, that
+   first PV move must not recapture on M's square: an exchange the user
+   started is not a hung piece.
 3. Net material loss of at least 2 points (P=1, N=B=3, R=5, Q=9, from the
-   user's side): the balance before M compared with the balance at the end
-   of the window. The window is the first 4 PV plies, extended one ply at a
-   time while its last move was a capture, up to 8 plies, so an exchange is
-   judged after the captures end. Even trades (BxN, PxB) do not count.
-4. No forced mate against the user: neither a checkmate inside the window
-   nor an engine score after M that is a mate against the user. A mating
-   line will be its own motif later.
+   user's side), measured against the engine's best line. Two lines start
+   from the position before M: the best line (the engine's best move and
+   its PV) and the played line (M and the PV after M). Both are cut to the
+   same window: at least 4 plies, extended one ply at a time while the last
+   ply of either line was forcing (a capture, a check, or the reply to a
+   check), up to 8 plies. The loss is the balance at the end of the best
+   line minus the balance at the end of the played line. If either window
+   still ends on a forcing ply (the PV ran out or the cap was reached), the
+   sequence is unfinished and there is no finding.
+4. The played line itself loses material: its balance at the end of the
+   window is at least 2 points below the balance right after M. Without this
+   guard, a quiet move followed by an even trade would count as a loss just
+   because the best line wins something: a missed win is not a hung piece.
+5. No forced mate against the user: neither a checkmate inside the played
+   window nor an engine score after M that is a mate against the user. A
+   mating line will be its own motif later.
 
-The evidence line is the window: the PV plies used for the material check,
-in UCI.
+The evidence line is the played window without M: the opponent's capture and
+the moves after it, in UCI.
 """
 
 from dataclasses import dataclass
@@ -28,7 +39,7 @@ import chess
 from app.classify import Classification
 from app.models import Score
 
-DETECTOR_VERSION = "hanging-0.2"
+DETECTOR_VERSION = "hanging-0.3"
 MOTIF = "HANGING_PIECE"
 BASE_WINDOW_PLIES = 4
 MAX_WINDOW_PLIES = 8
@@ -84,19 +95,70 @@ def is_mate_against(score: Score | None, user: chess.Color) -> bool:
     return score.mate < 0 if user == chess.WHITE else score.mate > 0
 
 
+@dataclass(frozen=True)
+class _Window:
+    """A line cut to the window: the position at its end and whether it stops mid-sequence."""
+
+    board: chess.Board
+    plies: tuple[chess.Move, ...]
+    unfinished: bool  # the last ply is forcing (capture, check or check reply): the sequence goes on
+    mated: bool  # a checkmate occurred inside the window
+
+
+def _replay(start: chess.Board, line: list[chess.Move], what: str) -> list[tuple[bool, chess.Board]]:
+    """Plays ``line`` from ``start``; for each ply, whether it was forcing, and the board after it.
+
+    Forcing: a capture, a check, or the reply to a check. A check and its
+    reply are one unit, and what the check set up (often a recapture) comes
+    after the reply, so the window must not stop there.
+    """
+    board = start.copy(stack=False)
+    plies = []
+    for move in line:
+        if move not in board.legal_moves:
+            raise ValueError(f"{what} move {move.uci()} is not legal in {board.fen()}")
+        forcing = board.is_capture(move) or board.gives_check(move) or board.is_check()
+        board.push(move)
+        plies.append((forcing, board.copy(stack=False)))
+    return plies
+
+
+def _window_length(*lines: list[tuple[bool, chess.Board]]) -> int:
+    """At least BASE_WINDOW_PLIES; one more while the last ply of either line was forcing; capped."""
+    length = BASE_WINDOW_PLIES
+    while length < MAX_WINDOW_PLIES and any(
+        len(line) >= length and line[length - 1][0] for line in lines
+    ):
+        length += 1
+    return length
+
+
+def _cut(start: chess.Board, line: list[chess.Move], replayed, length: int) -> _Window:
+    plies = replayed[:length]
+    if not plies:
+        return _Window(start, (), False, False)
+    forcing, end = plies[-1]
+    # A finished game (checkmate, stalemate) is not an unfinished exchange.
+    unfinished = forcing and not end.is_game_over(claim_draw=False)
+    mated = any(board.is_checkmate() for _, board in plies)
+    return _Window(end, tuple(line[:length]), unfinished, mated)
+
+
 def detect(
     board: chess.Board,
     move: chess.Move,
     classification: Classification,
     principal_variation: list[chess.Move] | tuple[chess.Move, ...],
     score_after: Score | None,
+    best_line: list[chess.Move] | tuple[chess.Move, ...],
 ) -> HangingPieceFinding | None:
     """Check one user move.
 
     ``board`` is the position before ``move`` (the user is to move);
     ``principal_variation`` and ``score_after`` are the engine's PV and score
-    (White's point of view) for the position after it. Raises ValueError if
-    the move or a PV move is illegal.
+    (White's point of view) for the position after it; ``best_line`` is the
+    engine's PV for the position before it, starting with its best move.
+    Raises ValueError if the move or a move of either line is illegal.
     """
     if classification not in FLAGGED:
         return None
@@ -109,7 +171,7 @@ def detect(
     moved = board.piece_at(move.from_square)
     after = board.copy(stack=False)
     after.push(move)
-    if not principal_variation:
+    if not principal_variation or not best_line:
         return None
 
     first = principal_variation[0]
@@ -123,27 +185,34 @@ def detect(
     ):
         return None
     capturer = after.piece_at(first.from_square)
+    if board.is_capture(move) and first.to_square == move.to_square:
+        # The opponent recaptures: the user started an exchange (rule 2).
+        return None
 
-    line = after.copy(stack=False)
-    window: list[chess.Move] = []
-    last_was_capture = False
-    for ply in principal_variation[:MAX_WINDOW_PLIES]:
-        if len(window) >= BASE_WINDOW_PLIES and not last_was_capture:
-            break
-        if ply not in line.legal_moves:
-            raise ValueError(f"PV move {ply.uci()} is not legal in {line.fen()}")
-        last_was_capture = line.is_capture(ply)
-        line.push(ply)
-        window.append(ply)
-        if line.is_checkmate():
-            return None
+    played = [move, *principal_variation]
+    best = list(best_line)
+    played_plies = _replay(board, played, "Played-line")
+    best_plies = _replay(board, best, "Best-line")
+    length = _window_length(played_plies, best_plies)
+    played_window = _cut(board, played, played_plies, length)
+    best_window = _cut(board, best, best_plies, length)
 
-    material_lost = material_balance(board, user) - material_balance(line, user)
+    if played_window.mated:
+        return None
+    if played_window.unfinished or best_window.unfinished:
+        # Never judge in the middle of an exchange or a run of checks.
+        return None
+
+    played_end = material_balance(played_window.board, user)
+    if material_balance(after, user) - played_end < MIN_MATERIAL_LOSS:
+        # The played line does not lose material itself (rule 4).
+        return None
+    material_lost = material_balance(best_window.board, user) - played_end
     if material_lost < MIN_MATERIAL_LOSS:
         return None
 
     return HangingPieceFinding(
-        evidence_line=tuple(window),
+        evidence_line=played_window.plies[1:],
         piece=chess.piece_name(target.piece_type),
         square=chess.square_name(first.to_square),
         captured_by=chess.piece_name(capturer.piece_type),

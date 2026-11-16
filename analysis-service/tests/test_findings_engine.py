@@ -34,7 +34,7 @@ def test_knight_moved_into_a_pawn_capture(analyze_full):
     finding = result.findings[0]
     assert finding.ply == HANGS_KNIGHT_PLY
     assert finding.motif == "HANGING_PIECE"
-    assert finding.detector_version == "hanging-0.2"
+    assert finding.detector_version == "hanging-0.3"
     assert (finding.facts.piece, finding.facts.square, finding.facts.captured_by) == ("knight", "d4", "pawn")
     assert finding.facts.material_lost >= 2
     assert (finding.facts.moved_piece, finding.facts.moved_from, finding.facts.moved_to) == ("knight", "f3", "d4")
@@ -68,3 +68,33 @@ def test_findings_are_deterministic(analyze_full):
     first = analyze_full(HANGS_KNIGHT)
     second = analyze_full(HANGS_KNIGHT)
     assert [f.model_dump() for f in first.findings] == [f.model_dump() for f in second.findings]
+
+
+def from_position(fen: str, movetext: str, result: str) -> str:
+    """A finished game from a set-up position (the result only has to be a finished one)."""
+    return f'[SetUp "1"]\n[FEN "{fen}"]\n[Result "{result}"]\n\n{movetext} {result}'
+
+
+# Review A2: Qxf3 instead of gxf3 drops the guard of d4.
+QXF3_GAME = from_position("3q2k1/ppp2ppp/8/8/3B4/4Qb2/PPP2PPP/6K1 w - - 0 1", "1. Qxf3 Qxd4", "0-1")
+
+
+def test_a_piece_lost_inside_an_exchange_is_found_against_the_best_line(analyze_full):
+    # hanging-0.2 compared with the balance before Qxf3 (level) and saw no loss.
+    result = analyze_full(QXF3_GAME, user_is_white=True)
+    assert result.moves[0].classification == "BLUNDER"
+    [finding] = result.findings
+    assert finding.ply == 1
+    assert (finding.facts.piece, finding.facts.square, finding.facts.captured_by) == ("bishop", "d4", "queen")
+    assert finding.facts.material_lost >= 3
+    assert finding.evidence_line_uci.split()[0] == "d8d4"
+
+
+# Review A4: Qc2 loses the queen to a knight fork after a forced sequence; a documented miss of hanging-0.3.
+QC2_GAME = from_position("5rk1/pb4pp/8/3n4/8/8/PP4PP/3Q1RK1 w - - 0 1", "1. Qc2 Rxf1+", "0-1")
+
+
+def test_a_queen_lost_to_a_fork_after_a_forced_sequence_is_a_known_miss(analyze_full):
+    result = analyze_full(QC2_GAME, user_is_white=True)
+    assert result.moves[0].classification == "BLUNDER"
+    assert result.findings == []

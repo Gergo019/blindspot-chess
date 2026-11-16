@@ -25,9 +25,10 @@ from app.detectors import hanging_piece
 from app.models import EngineInfo, Finding, FindingFacts, MoveEvaluation, Score
 from app.pgn import ParsedGame
 
-# Plies of the principal variation kept per position; detectors use them as
-# evidence lines (the hanging-piece window is 4 plies, extended up to 8 while
-# captures continue).
+# Plies of the principal variation kept per position. The hanging-piece
+# detector compares the PV before the user's move (the best line) with the
+# move and the PV after it (the played line), each cut to a window of 4 to 8
+# plies.
 PV_PLIES = 8
 
 
@@ -134,7 +135,7 @@ def analyze_game(game: ParsedGame, user_is_white: bool, engine: Engine) -> GameA
         evaluations.append(evaluation)
         if by_user:
             hanging = hanging_piece.detect(
-                position_before, move, evaluation.classification, current.pv, current.score
+                position_before, move, evaluation.classification, current.pv, current.score, before.pv
             )
             if hanging is not None:
                 findings.append(_finding(ply, hanging))
