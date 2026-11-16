@@ -120,6 +120,6 @@ Run on 2026-11-14 with Stockfish 19 at depth 16 on an Apple M4 (Docker, arm64):
 
 When the backend analyses the demo games itself, it finds the same 7 findings on the same plies (verified with the `demo` profile in Docker Compose; see the devlog).
 
-**Since `hanging-0.3` (#31)** the demo shows 5 of these 7 findings: `008j6z3b` (ply 9), `008pkspi` (36), `00ckuzm1` (66), `00jay4x6` (22) and `00lv6mdm` (16). `00hjmrjd` (20) is an even trade the user started, and `00mq9lvs` (47) costs only 1 point against the engine's best line. No new finding appears. The selection was made with `hanging-0.2` and is not re-run: 5 games is still above the pattern threshold of 3. Re-run the tool if a later detector version drops the demo below 3.
+**Since `hanging-0.3` (#31), unchanged in `hanging-0.4`,** the demo shows 5 of these 7 findings: `008j6z3b` (ply 9), `008pkspi` (36), `00ckuzm1` (66), `00jay4x6` (22) and `00lv6mdm` (16). `00hjmrjd` (20) is an even trade the user started, and `00mq9lvs` (47) costs only 1 point against the engine's best line. No new finding appears. The selection was made with `hanging-0.2` and is not re-run: 5 games is still above the pattern threshold of 3. Re-run the tool if a later detector version drops the demo below 3.
 
 Some PGNs say `Rated Classical game`: in 2013 Lichess labelled 5+5 and similar time controls "Classical". By today's rule they are rapid, and the importer does not read the `Event` tag.
