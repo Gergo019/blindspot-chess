@@ -23,7 +23,7 @@ from app.classify import classify
 from app.config import Settings
 from app.detectors import hanging_piece
 from app.models import EngineInfo, Finding, FindingFacts, MoveEvaluation, Score
-from app.pgn import ParsedGame
+from app.pgn import InvalidGameError, ParsedGame
 
 # Plies of the principal variation kept per position. The hanging-piece
 # detector compares the PV before the user's move (the best line) with the
@@ -111,9 +111,14 @@ def analyze_game(game: ParsedGame, user_is_white: bool, engine: Engine) -> GameA
     for ply, move in enumerate(game.moves, start=1):
         white_moved = board.turn == chess.WHITE
         by_user = white_moved == user_is_white
+        before = current
+        if before.best_move is None:
+            # The game is over on the board (pgn.py rejects moves after checkmate, stalemate and
+            # insufficient material, and ends the game at fivefold repetition or the 75-move rule).
+            # Never index a missing best move: refuse the game instead of failing with a 500.
+            raise InvalidGameError(f"Half-move {ply} is played after the game ended on the board.")
         position_before = board.copy(stack=False)
         san = board.san(move)
-        before = current
         board.push(move)
         current = engine.evaluate(board)
         evaluation = MoveEvaluation(

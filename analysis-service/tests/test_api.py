@@ -45,6 +45,20 @@ class TestRejectedGames:
 
 
 @pytest.mark.engine
+class TestGamesThatEndByTheRules:
+    def test_a_game_that_plays_on_after_a_fivefold_repetition_is_analysed_up_to_it(self):
+        response = post(knight_shuffle(24))
+        assert response.status_code == 200
+        assert len(response.json()["moves"]) == 16
+
+    def test_a_game_that_ends_at_the_75_move_rule_is_analysed(self):
+        pgn = '[SetUp "1"]\n[FEN "4k3/8/8/8/8/8/8/R3K3 w - - 149 100"]\n[Result "1/2-1/2"]\n\n100. Ra2 1/2-1/2'
+        response = post(pgn)
+        assert response.status_code == 200
+        assert len(response.json()["moves"]) == 1
+
+
+@pytest.mark.engine
 class TestAnalyze:
     def test_response_follows_the_contract(self):
         response = post(FOOLS_MATE, user_color="BLACK")

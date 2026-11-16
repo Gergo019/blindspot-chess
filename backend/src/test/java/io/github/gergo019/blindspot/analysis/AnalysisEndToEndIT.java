@@ -14,8 +14,11 @@ import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -59,6 +62,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @SpringBootTest(properties = { "blindspot.lichess.importer.enabled=false", "blindspot.analysis.job.enabled=false" })
 @Testcontainers
+@ExtendWith(OutputCaptureExtension.class)
 class AnalysisEndToEndIT {
 
     /** 3. Nd4?? puts the knight where the e5 pawn takes it; White (the user) lost. */
@@ -207,6 +211,24 @@ class AnalysisEndToEndIT {
 
         // Nothing left to do: a second run analyses nothing.
         assertThat(analysisJob.runOnce().analysed()).isZero();
+    }
+
+    @Test
+    void aGameTheServiceRejectsEndsFailedWithTheReasonLogged(CapturedOutput output) {
+        // Review A6 / #32: null moves used to be analysed. The real service now answers 422, and the
+        // backend marks the game FAILED at once (ADR 0005, REJECTED), logging the service's reason.
+        User user = users.save(TestData.user("e2e-null-moves"));
+        ChessAccount account = accounts.save(TestData.lichessAccount(user));
+        Game game = games.save(new Game(account, "e2e-null", Instant.parse("2026-11-16T12:00:00Z"), Speed.RAPID,
+                true, PieceColor.WHITE, GameResult.WIN, "1. e4 -- 2. d4 -- 3. Nf3 e5 1-0"));
+
+        assertThat(analysisService.analyzeGame(game.getId())).isEqualTo(AnalysisService.Outcome.FAILED);
+
+        Game failed = games.findById(game.getId()).orElseThrow();
+        assertThat(failed.getAnalysisStatus()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(failed.getAnalysisAttempts()).isEqualTo(1);
+        assertThat(evaluations.findByGameIdOrderByPlyAsc(game.getId())).isEmpty();
+        assertThat(output).contains("(REJECTED); marked FAILED").contains("422").contains("null move");
     }
 
     /**
