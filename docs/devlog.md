@@ -12,15 +12,15 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - `AnalysisFailedException.Kind`: `REJECTED`, `UNAVAILABLE`, `TIMEOUT`, `INVALID_RESPONSE`. `AnalysisClient` decides the kind from the exception type and the status code, never from a message:
   - 422 is `REJECTED`; every other error status is `UNAVAILABLE`;
   - for an I/O error, a read timeout (`HttpTimeoutException`, but not its subclass `HttpConnectTimeoutException`) is `TIMEOUT`, and anything else (connection refused, host not found, connect timeout, connection reset) is `UNAVAILABLE`;
-  - a 2xx with no body or an unreadable body is `INVALID_RESPONSE`.
+  - a 2xx with no body or an unreadable body is `INVALID_RESPONSE`, and so is readable content the backend cannot store (decided in `AnalysisService`, see below).
 - `Game`:
   - `releaseAnalysis()`: RUNNING -> PENDING, the attempt given back;
-  - `retryOrFailAnalysis()` (for a timeout or an unreadable response): PENDING while attempts remain, otherwise FAILED. It shares the rule with `recoverStuckAnalysis()`.
+  - `retryOrFailAnalysis()` (for a timeout or an invalid response): PENDING while attempts remain, otherwise FAILED. It shares the rule with `recoverStuckAnalysis()`.
 - `GameRepository.claimForAnalysis(id, now)`: a conditional JPQL update, PENDING -> RUNNING with attempts + 1, the start time and `updated_at`. It returns whether exactly one row changed. `findByAnalysisStatusOrderByPlayedAtDesc` replaces the ascending query.
-- `AnalysisService.analyzeGame` claims through the query and returns an `Outcome`: `DONE`, `FAILED`, `RETRY`, `SERVICE_UNAVAILABLE` or `NOT_CLAIMED`. It acts on the kind and logs the kind every time: an unreadable response at ERROR, the rest at WARN.
+- `AnalysisService.analyzeGame` claims through the query and returns an `Outcome`: `DONE`, `FAILED`, `RETRY`, `INVALID_RESPONSE_RETRY`, `INVALID_RESPONSE_FAILED`, `SERVICE_UNAVAILABLE` or `NOT_CLAIMED`. It acts on the kind and logs the kind every time: an invalid response at ERROR, the rest at WARN. Storing first turns the response into entities in memory, then saves and flushes everything in one transaction; anything the backend or the database rejects becomes `INVALID_RESPONSE` and rolls back.
 - `AnalysisJob`:
   - newest PENDING games first;
-  - stops the run at the first `SERVICE_UNAVAILABLE` (with several workers, games not yet started are skipped);
+  - stops the run at the first `SERVICE_UNAVAILABLE` or invalid response (with several workers, games not yet started are skipped);
   - `nextDelay()` is the interval, or the back-off while the service is unavailable;
   - `RunResult` gains `failed`, `retried` and `serviceUnavailable`.
 - `AnalysisJobScheduler`: a `SchedulingConfigurer` trigger instead of `@Scheduled(fixedDelay)`. Each run starts `job.nextDelay()` after the previous one ended, and the first run starts after `initial-delay`.
@@ -42,21 +42,23 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   | `REJECTED` | 422 | FAILED at once, reason logged | counted |
   | `UNAVAILABLE` | connection refused, connect timeout, DNS failure, 5xx, other error statuses | PENDING | given back |
   | `TIMEOUT` | read timeout | PENDING, FAILED on the 2nd | counted |
-  | `INVALID_RESPONSE` | 2xx without a readable body | PENDING, FAILED on the 2nd; logged at ERROR | counted |
+  | `INVALID_RESPONSE` | 2xx without a readable body, or content that cannot be stored | PENDING, FAILED on the 2nd; logged at ERROR; the run stops, no back-off | counted |
 
   An outage of any length therefore never fails a game. A timeout may be the game's own fault (pathological length), so it counts against the existing limit of 2. Rejected alternative: a separate retry counter for outages, which would still fail games during a long outage.
-- **Two kinds beyond the three in the task.** `INVALID_RESPONSE`, a 2xx the backend cannot read, was first FAILED at once. In review it was changed to behave like `TIMEOUT`: back to PENDING, counted, FAILED after the second, and logged at ERROR with the game id. It most likely means a contract mismatch between backend and service, which would hit every game, so failing at once would fail a whole run. A response that is readable but cannot be stored (for example an unknown classification) is still FAILED at once. Error statuses other than 422 and 5xx (400, 404, ...) count as `UNAVAILABLE`, because they come from a wrong URL or a contract mismatch and would fail every game.
+- **Two kinds beyond the three in the task.** `INVALID_RESPONSE`, a 2xx the backend cannot read, was first FAILED at once. In review it was changed to behave like `TIMEOUT`: back to PENDING, counted, FAILED after the second, and logged at ERROR with the game id. It most likely means a contract mismatch between backend and service, which would hit every game, so failing at once would fail a whole run. A second review change gave a readable response that cannot be stored (an unknown classification or motif, values the domain rules or the database reject) the same handling, with nothing partial stored. Invalid responses now also stop the run, like an unavailable service, but without the back-off and with the attempt counted, so one mismatch costs one game an attempt instead of a whole batch. Other storing errors (for example, the database being down) still mark the game FAILED. Error statuses other than 422 and 5xx (400, 404, ...) count as `UNAVAILABLE`, because they come from a wrong URL or a contract mismatch and would fail every game.
 - **Back-off:** twice the interval, doubling after each further unavailable run, capped at 10 minutes and never below the interval. It resets when a game ends DONE or FAILED, because the service answered (a 422 shows the service is up too). A run with only timeouts leaves it unchanged. The cap is a constant (`AnalysisJob.MAX_BACKOFF`), not a setting, because nobody needs to tune it yet. The schedule follows the back-off exactly through a trigger. Rejected alternative: keeping the fixed delay and skipping runs, which only rounds to multiples of the interval.
 - **The claim is a query, not an entity method.** `Game.startAnalysis` checks the status in memory, so two workers that both loaded the game as PENDING under READ COMMITTED could both commit RUNNING. The `UPDATE ... WHERE analysis_status = 'PENDING'` is re-checked by PostgreSQL on the locked row, and the second worker changes nothing. `Game.startAnalysis` keeps the same transition for in-memory use (and the manual retry from FAILED); both are documented to stay in step. Rejected alternatives: `@Version` (a retry path, and the losing worker still logs a failure) and `SKIP LOCKED` (a lock held across the HTTP call, or released before it).
 - **A game that cannot be claimed is `NOT_CLAIMED`, not an exception.** Before, `startAnalysis` threw `IllegalStateException` for a non-PENDING game, and the job logged it as "skipped". Now the losing worker sends nothing and logs at info level. A game that does not exist is also `NOT_CLAIMED`.
 - **Newest first:** the pattern report reads a player's last 20 games, so they matter most after an import. Batches stay bounded (`ANALYSIS_BATCH_SIZE`).
 
 **Verification:**
-- `mvn verify` in Docker: 69 unit tests and 20 integration tests, all green (after the review change below; 67 and 19 before it). `AnalysisFailureHandlingIT` has 9 tests:
+- `mvn verify` in Docker: 75 unit tests and 22 integration tests, all green (after the review changes; 67 and 19 before them). `AnalysisFailureHandlingIT` has 11 tests:
   - **An outage:** connection refused for one run, then 503 for the next, then working. All three games end DONE with `analysis_attempts` = 1, each failing run stops after one game, and the back-off goes 60 s, 120 s, then back to 30 s.
   - **Newest first** on PostgreSQL.
   - **A real read timeout twice** (1 s timeout): PENDING with 1 attempt, then FAILED with 2.
   - **An unreadable 2xx body** (`{"engine": [`) twice: PENDING with 1 attempt, then FAILED with 2, and nothing stored.
+  - **An unknown motif** in an otherwise valid response: the run stops after the newest game, which is PENDING with 1 attempt. The next game is untouched (0 attempts), no evaluations or findings are stored, and there is no back-off.
+  - **Two moves with ply 3**, accepted in memory and rejected by PostgreSQL's `move_evaluations_game_ply_uq` on the flush: the whole store rolls back (0 evaluations), then FAILED on the second attempt.
   - **A 422** is FAILED at once with 1 attempt.
   - **No transaction is active during the HTTP call.** An interceptor on every application `RestClient` records `TransactionSynchronizationManager.isActualTransactionActive()` on the calling thread. The test also checks that the same probe does see a transaction inside one.
   - **A FAILED game** (with a start time far beyond the stuck timeout) stays FAILED, with the same attempt count and start time, through three job runs, three recovery passes and a direct `analyzeGame`. The service never receives it.
@@ -70,7 +72,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 
 - CI on PR #38, first run green, **2m51s** in all. Backend job 1m32s: 67 unit tests; `AnalysisFailureHandlingIT` 4.7 s, `AnalysisEndToEndIT` 43.1 s, `SchemaIT` 13.3 s, `LichessImportIT` 2.2 s, `DemoDataIT` 2.0 s. Analysis-service job 1m10s; Compose stack 1m15s, now including the wait for the healthcheck.
 
-- **Follow-up PR #39** (unreadable responses retried once): CI green on the first run, **2m56s** in all. Backend job 1m45s: 69 unit tests and 20 integration tests, `AnalysisFailureHandlingIT` 9 tests in 5.5 s. Analysis-service job 1m01s; Compose stack 1m07s.
+- **Follow-up PR #39** (unreadable responses retried once), before the second review change: CI green on the first run, **2m56s** in all. Backend job 1m45s: 69 unit tests and 20 integration tests, `AnalysisFailureHandlingIT` 9 tests in 5.5 s. Analysis-service job 1m01s; Compose stack 1m07s.
 
 **Open points / risks:**
 - **Newest first can starve old games** if imports outpaced analysis for a long time. It is bounded today: the importer fetches at most the newest 20 games per account and run, and one game takes seconds.
@@ -78,7 +80,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - `TIMEOUT` cannot tell a slow game from an overloaded service. If timeouts cluster across games, the read timeout or the number of workers is wrong; the log shows the kind each time.
 - **ADR numbering:** this PR takes ADR 0005, so the knight-fork ADR (#26) will be 0006.
 
-**Links:** [#30](https://github.com/Gergo019/blindspot-chess/issues/30), [PR #38](https://github.com/Gergo019/blindspot-chess/pull/38), [PR #39](https://github.com/Gergo019/blindspot-chess/pull/39) (follow-up: unreadable responses), [ADR 0005](decisions/0005-failure-handling-in-background-analysis.md), the code review of 2026-11-14 (A1, A8, A9)
+**Links:** [#30](https://github.com/Gergo019/blindspot-chess/issues/30), [PR #38](https://github.com/Gergo019/blindspot-chess/pull/38), [PR #39](https://github.com/Gergo019/blindspot-chess/pull/39) (follow-up: invalid responses), [ADR 0005](decisions/0005-failure-handling-in-background-analysis.md), the code review of 2026-11-14 (A1, A8, A9)
 
 ## 2026-11-14: Seeded demo data from the Lichess open database (#23 / PR #29)
 
