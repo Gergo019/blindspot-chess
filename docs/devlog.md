@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-16: Hanging-piece loss measured against the engine's best line (#31 / PR #42)
+## 2026-11-16: Hanging-piece loss measured against the engine's best line (#31 / PR #42, #43)
 
 **Goal:** `hanging-0.3`. Measure what a move cost compared with the engine's choice, never judge a line in the middle of an exchange, and run the window through checks. Phase 1 hardening item H2 from the 2026-11-14 code review (A2, A7, the window part of A4).
 
@@ -12,16 +12,16 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - `analysis-service/app/detectors/hanging_piece.py`, rules as in ADR 0004:
   - **Baseline.** The detector takes the engine's best line (the PV of the position before M, starting with the best move) as a new argument. It compares that line with the played line (M and the PV after M), both from the position before M, over the same window. `materialLost` = balance at the end of the best line minus balance at the end of the played line.
   - **Window.** At least 4 plies; extended while the last ply of either line was forcing (a capture, a check, or the reply to a check); cap 8. A window that still ends on a forcing ply (PV ran out, or cap) means no finding.
-  - **Two guards:**
-    - rule 2: if M is a capture, the opponent's first PV move must not recapture on M's square;
-    - rule 4: the played line itself must end at least 2 below the balance right after M.
+  - **Exchange on the square** (rule 2): if M is a capture and the opponent's first PV move recaptures on M's square, only that exchange is judged. It fires if value(moved piece) - value(piece M captured) is at least 2, with the moved piece as `piece`, the difference as `materialLost`, and the recapture as the evidence line.
+  - **Played-line guard** (rule 4): otherwise, the played line itself must end at least 2 below the balance right after M.
   - **Evidence:** the played window without M.
   - Version `hanging-0.3`.
 - `app/engine.py` passes the position-before PV (`before.pv`, already kept, 8 plies) to the detector. No change to the search or its settings.
 - Tests (`test_hanging_piece.py`):
   - new `TestBaseline` (Qxf3 with the engine lines, loss 4; the same with a hand line, loss 3; a loss shared by the best line is not blamed);
   - `TestWindow` reworked: mid-exchange and A7 cases give no finding, the check and its reply are one unit, the 008pkspi best line is not cut at the reply, the cap, an equal-length extension, and Qc2 as a known miss;
-  - new `TestGuards` (a quiet move followed by an even trade; demo games 001c7wqq and 00hjmrjd);
+  - new `TestGuards` (a quiet move followed by an even trade; demo game 001c7wqq, a queen trade);
+  - new `TestExchangeOnTheSquare` (a knight takes a defended pawn: knight, loss 2; rook for knight: 2; demo game 00hjmrjd, an even trade: no finding; later losses elsewhere in the line are not counted);
   - every case now passes a best line.
 - `test_findings_engine.py`: Qxf3 fires with the real engine, Qc2 does not; games from a FEN start position.
 - `test_api.py` and the backend's `AnalysisEndToEndIT` expect `hanging-0.3`.
@@ -32,12 +32,13 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - **Best line as the baseline, equal windows.** v0.2 compared with the balance before M. It missed a piece lost inside an exchange: Qxf3 (instead of gxf3) leaves the balance the same after Qxf3 Qxd4. It also blamed moves for pieces lost in every line. The engine already searches the position before M, so its PV is free. Equal windows keep either line from getting extra plies to win material back. Rejected: the value of the first captured piece (open question (a)), which ignores what is won back.
 - **Replies to checks are forcing too.** This came from the demo check. In `008pkspi` the best line Nd4 Qxe6 Nxe2+ Kh1 Bxe6 recaptures the queen after the reply Kh1. A capture-or-check rule cut it at Kh1, measured the best line 7 points down, and lost a real finding. A check and its reply are one unit.
 - **No finding when a window ends on a forcing ply** (review A7). The test `test_cut_after_four_plies_the_same_exchange_looks_level` asserted that a line cut after four plies of an exchange should be judged "level". It is replaced by tests that such lines are not judged at all; the A7 line (Ke2 with only Nxb5) fired with loss 3 in v0.2 and no longer does.
-- **Two guards, both from the demo check.** The best-line baseline mixes "missed a win" with "hung a piece":
-  - In `001c7wqq` the user traded queens (Qxd8+ Bxd8) instead of winning a rook (Qxa8), and v0.3 without guards reported "queen hanging on d8, lost 6". The recapture guard stops it.
+- **Exchange on the square, and a played-line guard, both from the demo check.** The best-line baseline mixes "missed a win" with "hung a piece":
+  - In `001c7wqq` the user traded queens (Qxd8+ Bxd8) instead of winning a rook (Qxa8), and v0.3 without a rule for it reported "queen hanging on d8, lost 6". When the opponent recaptures on the square the user's move captured on, only that exchange is judged: queen for queen is 0, no finding.
+  - A plain "no finding on a recapture" guard was tried first and merged with PR #42. It also dropped the most common hung piece of all, a piece taking a defended pawn, so it was replaced in review by judging the exchange on the square (PR #43, pushed after #42 was merged).
   - A quiet move followed by an even trade, with a best line that wins something, would fire the same way. The played-line guard stops it.
 
   `materialLost` stays the loss against the best line, so it can include a missed gain (008pkspi: rook for knight, while the best line ends a pawn up: 4).
-- **The recapture guard also drops `00hjmrjd`**, on purpose. There Nxd5 exd5 is an even knight-for-bishop trade, and Black's material is lost later, when Nxc5 takes the c5 bishop. Reporting "knight lost on d5" (v0.2) was wrong about the piece. An alternative was considered that measures the played line from before M after a recapture. It would have kept this finding, with the same wrong facts. It was rejected after checking the position: the first reading of it, mine, wrongly took d5 for a pawn.
+- **`00hjmrjd` no longer fires**, on purpose. There Nxd5 exd5 is an even knight-for-bishop trade (0 on the square), and Black's material is lost later, when Nxc5 takes the c5 bishop. Reporting "knight lost on d5" (v0.2) was wrong about the piece; the later loss is a documented known miss. An alternative was considered that measures the played line from before M after a recapture. It would have kept this finding, with the same wrong facts. It was rejected after checking the position: the first reading of it, mine, wrongly took d5 for a pawn.
 - **Qc2 is a known miss, not a fixture that fires.** With the real engine lines, both windows are still forcing at the cap: the played line ends on the check Ne1+, the best line on the reply Bc8 to Qb8+. Making it fire needs a longer window and more PV plies, a change measured on real games first (#41).
 - **Rule 2 is unchanged:** a double attack that starts with a check (A4, the motif part) stays out; that is #35.
 
@@ -48,7 +49,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 | `008j6z3b` (9, W) | knight d4, 3 | knight d4, 2 | the best line keeps less than the static baseline |
 | `008pkspi` (36, B) | rook b6, 2 | rook b6, 4 | the best line ends a pawn up; window runs through the check reply |
 | `00ckuzm1` (66, B) | rook c3, 5 | rook c3, 6 | longer window (7 plies) |
-| `00hjmrjd` (20, B) | knight d5, 3 | none | recapture guard: an even trade the user started |
+| `00hjmrjd` (20, B) | knight d5, 3 | none | exchange on the square: knight for bishop, 0 |
 | `00jay4x6` (22, B) | bishop b7, 5 | bishop b7, 5 | same |
 | `00lv6mdm` (16, B) | bishop h3, 3 | bishop h3, 3 | same |
 | `00mq9lvs` (47, W) | bishop f4, 2 | none | the best line loses the a4 pawn too: the move costs 1 |
@@ -56,17 +57,18 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 No new finding appears in the other 13 games. **5 distinct games** keep a finding, above the pattern threshold of 3, so the demo selection is not re-run (`tools/demo-data/README.md` says so). The selection itself was made with `hanging-0.2`.
 
 **Verification:**
-- Analysis-service tests in the Docker test image: 109 passed (engine tests included).
-- Each new rule is pinned: with the recapture guard removed, 2 tests fail; with the played-line guard removed, 1 test fails; without check replies as forcing, 2 tests fail.
+- Analysis-service tests in the Docker test image: 112 passed (engine tests included).
+- Each new rule is pinned: with no rule for recaptures on the square, 2 tests fail; with the played-line guard removed, 1 test fails; without check replies as forcing, 2 tests fail. (Checked with the first version of the recapture rule; the exchange-on-the-square tests then pin the replacement.)
 - Backend `mvn verify` in Docker: 75 unit tests and 22 integration tests green, including `AnalysisEndToEndIT` through the rebuilt analysis image (the knight game still gives `e5d4 ...`, now `hanging-0.3`).
 - CI on PR #42, first run green, **2m59s** in all. Analysis-service job 1m08s (109 tests in the image). Backend job 1m47s: 75 unit tests and 22 integration tests, `AnalysisEndToEndIT` 55.1 s. Compose stack 1m06s.
 
 **Open points / risks:**
-- **Known misses:** forcing lines longer than 8 plies (Qc2, #41), and material lost later in a line the user started with an even trade (00hjmrjd).
+- **Known misses:** forcing lines longer than 8 plies (Qc2, #41), and material lost later in a line the user started with a capture that was recaptured (00hjmrjd).
+- **The exchange on the square stops at the recapture:** Nxd5 exd5 Qxd5 (knight for two pawns, a net 1) would still be reported as 2. No demo game has such a case.
 - **The golden files of #33** will be taken with `hanging-0.3`; any later detector change regenerates them on purpose.
 - **Stored demo findings** in an existing database keep `hanging-0.2` until the games are analysed again. A fresh `docker compose down -v` gives `hanging-0.3`.
 
-**Links:** [#31](https://github.com/Gergo019/blindspot-chess/issues/31), [PR #42](https://github.com/Gergo019/blindspot-chess/pull/42), [ADR 0004](decisions/0004-hanging-piece-detector.md), [#41](https://github.com/Gergo019/blindspot-chess/issues/41), the code review of 2026-11-14 (A2, A4, A7)
+**Links:** [#31](https://github.com/Gergo019/blindspot-chess/issues/31), [PR #42](https://github.com/Gergo019/blindspot-chess/pull/42), [PR #43](https://github.com/Gergo019/blindspot-chess/pull/43) (exchange on the square), [ADR 0004](decisions/0004-hanging-piece-detector.md), [#41](https://github.com/Gergo019/blindspot-chess/issues/41), the code review of 2026-11-14 (A2, A4, A7)
 
 ## 2026-11-16: Transient analysis-service failures no longer fail games (#30 / PR #38, #39)
 

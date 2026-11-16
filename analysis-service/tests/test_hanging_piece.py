@@ -280,22 +280,48 @@ class TestGuards:
         fen = "4k2r/8/2n5/8/3B4/4P3/8/4K3 w - - 0 1"
         assert run(fen, "e1d2", BLUNDER, "c6d4 e3d4 e8e7 d2e3", best="d4h8 e8f7 e1e2 f7g8") is None
 
-    def test_an_exchange_the_user_started_is_not_a_hung_piece(self):
+    def test_an_even_queen_trade_is_not_a_hung_piece(self):
         # Demo game 001c7wqq, ply 19, White (Stockfish 19 lines): Qxd8+ Bxd8 trades queens, the best move
-        # Qxa8 wins a rook. The opponent's first move recaptures on M's square: no finding (rule 2).
+        # Qxa8 wins a rook. Exchange on the square: queen for queen, 0. No finding.
         fen = "rn1qk2r/p1p1bppp/1p2b3/3Q4/3P4/8/PPP2PPP/R1B1KBNR w KQkq - 1 10"
         played = "e7d8 c1f4 b8c6 e1c1 c6e7 g1f3 e8g8 f1d3"
         best = "d5a8 e6d5 a8a7 e8g8 a7a4 c7c5 g1f3 b8c6"
         assert run(fen, "d5d8", BLUNDER, played, best=best) is None
 
-    def test_a_recapture_after_an_even_trade_is_not_blamed_on_the_traded_piece(self):
-        # Demo game 00hjmrjd, ply 20, Black: Nxd5 exd5 trades knight for bishop. The material is lost
-        # later, when Nxc5 takes the c5 bishop, which this rule does not describe: reporting "knight lost
-        # on d5" would be false. hanging-0.2 reported exactly that.
+
+class TestExchangeOnTheSquare:
+    """M captures and the opponent recaptures on the same square: only that exchange is judged."""
+
+    def test_a_knight_that_takes_a_defended_pawn_is_lost(self):
+        # Nxd5 exd5: knight for pawn. The finding names the knight, the loss is 3 - 1 = 2.
+        fen = "4k3/8/4p3/3p4/8/2N5/8/4K3 w - - 0 1"
+        finding = run(fen, "c3d5", MISTAKE, "e6d5 e1e2 e8e7 e2e3", best="e1e2 e8e7 e2e3 e7d6")
+        assert finding is not None
+        assert (finding.piece, finding.square, finding.captured_by) == ("knight", "d5", "pawn")
+        assert finding.material_lost == 2
+        assert (finding.moved_piece, finding.moved_from, finding.moved_to) == ("knight", "c3", "d5")
+        assert finding.evidence_line_uci == "e6d5"
+
+    def test_an_even_trade_on_the_square_does_not_fire_even_if_material_is_lost_later(self):
+        # Demo game 00hjmrjd, ply 20, Black: Nxd5 exd5 trades knight for bishop (0). The material Black
+        # loses later (Nxc5 takes the c5 bishop) is not attributed: a known miss, not this finding.
+        # hanging-0.2 reported "knight lost on d5", which named the wrong piece.
         fen = "r1bqkr2/2pp1pp1/p1n2n1p/2bBp3/Np2P3/3P1N2/PPP2PPP/R1BQ1RK1 b q - 1 10"
         played = "e4d5 c6e7 a4c5 d7d6 c5b3 c8g4 f1e1 f7f5"
         best = "d8e7 d5c6 d7c6 a4c5 e7c5 a2a3 c8g4 c1e3"
         assert run(fen, "f6d5", MISTAKE, played, best=best) is None
+
+    def test_losing_the_exchange_on_the_square_fires(self):
+        # Rxe5 dxe5: rook for knight, 5 - 3 = 2.
+        fen = "4k3/8/3p4/4n3/8/8/8/4RK2 w - - 0 1"
+        finding = run(fen, "e1e5", MISTAKE, "d6e5 f1e2 e8e7 e2e3", best="f1e2 e8e7 e2e3 e7e6")
+        assert (finding.piece, finding.captured_by, finding.material_lost) == ("rook", "pawn", 2)
+
+    def test_the_rest_of_the_line_does_not_count(self):
+        # Nxd5 exd5 and then White also loses the loose g1 rook: only the exchange on d5 is judged (2).
+        fen = "4k3/8/4p3/3p4/8/2N4K/8/r5R1 w - - 0 1"
+        finding = run(fen, "c3d5", MISTAKE, "e6d5 h3h4 a1g1 h4h5", best="h3h4 e8e7 g1g7 e7d6")
+        assert finding.material_lost == 2
 
 
 class TestMateScore:
