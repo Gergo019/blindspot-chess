@@ -133,5 +133,29 @@ class DomainRulesTest {
     @Test
     void onlyARunningAnalysisCanBeRecovered() {
         assertThatThrownBy(game::recoverStuckAnalysis).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(game::timeOutAnalysis).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(game::releaseAnalysis).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void anUnavailableServiceGivesTheAttemptBack() {
+        for (int outage = 0; outage < 5; outage++) {
+            game.startAnalysis(T0);
+            game.releaseAnalysis();
+        }
+
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isZero();
+    }
+
+    @Test
+    void aTimeoutUsesAnAttemptAndTheLastOneFails() {
+        game.startAnalysis(T0);
+        assertThat(game.timeOutAnalysis()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
+
+        game.startAnalysis(T0.plus(Duration.ofMinutes(1)));
+        assertThat(game.timeOutAnalysis()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(Game.MAX_ANALYSIS_ATTEMPTS);
     }
 }

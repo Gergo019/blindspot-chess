@@ -30,11 +30,12 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import io.github.gergo019.blindspot.TestData;
+import io.github.gergo019.blindspot.analysis.AnalysisService.Outcome;
 import io.github.gergo019.blindspot.game.Game;
 import io.github.gergo019.blindspot.game.GameEnums.AnalysisStatus;
 import io.github.gergo019.blindspot.game.GameRepository;
 
-/** Batch order, the worker cap and stuck-game recovery, with mocks: no database, no HTTP. */
+/** Batch order, the worker cap, stopping and backing off, and stuck-game recovery, with mocks: no database, no HTTP. */
 class AnalysisJobTest {
 
     static final Instant NOW = Instant.parse("2026-11-13T15:00:00Z");
@@ -58,17 +59,18 @@ class AnalysisJobTest {
     }
 
     @Test
-    void analysesTheOldestPendingGamesOfOneBatchInOrderOneAtATime() {
+    void analysesTheNewestPendingGamesOfOneBatchInOrderOneAtATime() {
         List<Game> pending = List.of(game(11L), game(12L), game(13L));
-        when(games.findByAnalysisStatusOrderByPlayedAtAsc(AnalysisStatus.PENDING, PageRequest.of(0, 3)))
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(AnalysisStatus.PENDING, PageRequest.of(0, 3)))
                 .thenReturn(pending);
-        when(analysisService.analyzeGame(anyLong())).thenReturn(AnalysisStatus.DONE);
-        when(analysisService.analyzeGame(12L)).thenReturn(AnalysisStatus.FAILED);
+        when(analysisService.analyzeGame(anyLong())).thenReturn(Outcome.DONE);
+        when(analysisService.analyzeGame(12L)).thenReturn(Outcome.FAILED);
 
         AnalysisJob.RunResult result = job(1, 3).runOnce();
 
         assertThat(result.analysed()).isEqualTo(3);
         assertThat(result.done()).isEqualTo(2);
+        assertThat(result.failed()).isEqualTo(1);
         InOrder order = inOrder(analysisService);
         order.verify(analysisService).analyzeGame(11L);
         order.verify(analysisService).analyzeGame(12L);
@@ -77,10 +79,10 @@ class AnalysisJobTest {
 
     @Test
     void oneGameThrowingDoesNotStopTheBatch() {
-        when(games.findByAnalysisStatusOrderByPlayedAtAsc(eq(AnalysisStatus.PENDING), any()))
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any()))
                 .thenReturn(List.of(game(1L), game(2L)));
         when(analysisService.analyzeGame(1L)).thenThrow(new IllegalStateException("Cannot start analysis from DONE"));
-        when(analysisService.analyzeGame(2L)).thenReturn(AnalysisStatus.DONE);
+        when(analysisService.analyzeGame(2L)).thenReturn(Outcome.DONE);
 
         assertThat(job(1, 10).runOnce().done()).isEqualTo(1);
         verify(analysisService).analyzeGame(2L);
@@ -92,7 +94,7 @@ class AnalysisJobTest {
         for (long id = 1; id <= 6; id++) {
             pending.add(game(id));
         }
-        when(games.findByAnalysisStatusOrderByPlayedAtAsc(eq(AnalysisStatus.PENDING), any())).thenReturn(pending);
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any())).thenReturn(pending);
         AtomicInteger running = new AtomicInteger();
         List<Integer> seen = Collections.synchronizedList(new ArrayList<>());
         CountDownLatch bothRunning = new CountDownLatch(2);
@@ -102,11 +104,126 @@ class AnalysisJobTest {
             bothRunning.await(5, TimeUnit.SECONDS);
             Thread.sleep(20);
             running.decrementAndGet();
-            return AnalysisStatus.DONE;
+            return Outcome.DONE;
         });
 
         assertThat(job(2, 10).runOnce().done()).isEqualTo(6);
         assertThat(seen).hasSize(6).allMatch(n -> n <= 2).contains(2);
+    }
+
+    @Test
+    void queueIsAskedForTheNewestGamesFirst() {
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any())).thenReturn(List.of());
+
+        job(1, 7).runOnce();
+
+        // Newest first is the repository method's order; the real ordering is checked on PostgreSQL in
+        // AnalysisFailureHandlingIT.
+        verify(games).findByAnalysisStatusOrderByPlayedAtDesc(AnalysisStatus.PENDING, PageRequest.of(0, 7));
+    }
+
+    @Test
+    void serviceUnavailableStopsTheBatchAtOnce() {
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any()))
+                .thenReturn(List.of(game(1L), game(2L), game(3L)));
+        when(analysisService.analyzeGame(1L)).thenReturn(Outcome.DONE);
+        when(analysisService.analyzeGame(2L)).thenReturn(Outcome.SERVICE_UNAVAILABLE);
+
+        AnalysisJob.RunResult result = job(1, 10).runOnce();
+
+        assertThat(result.serviceUnavailable()).isTrue();
+        assertThat(result.analysed()).isEqualTo(2);
+        assertThat(result.done()).isEqualTo(1);
+        verify(analysisService, never()).analyzeGame(3L);
+    }
+
+    @Test
+    void serviceUnavailableStopsStartingGamesWithSeveralWorkers() throws Exception {
+        List<Game> pending = new ArrayList<>();
+        for (long id = 1; id <= 20; id++) {
+            pending.add(game(id));
+        }
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any())).thenReturn(pending);
+        AtomicInteger calls = new AtomicInteger();
+        when(analysisService.analyzeGame(anyLong())).thenAnswer(call -> {
+            calls.incrementAndGet();
+            return Outcome.SERVICE_UNAVAILABLE;
+        });
+
+        AnalysisJob.RunResult result = job(2, 20).runOnce();
+
+        assertThat(result.serviceUnavailable()).isTrue();
+        // At most one game per worker can have started before the first failure was seen.
+        assertThat(calls.get()).isLessThanOrEqualTo(2);
+        assertThat(result.analysed()).isEqualTo(calls.get());
+    }
+
+    @Test
+    void timeoutsDoNotStopTheBatch() {
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any()))
+                .thenReturn(List.of(game(1L), game(2L), game(3L)));
+        when(analysisService.analyzeGame(1L)).thenReturn(Outcome.RETRY);
+        when(analysisService.analyzeGame(2L)).thenReturn(Outcome.FAILED);
+        when(analysisService.analyzeGame(3L)).thenReturn(Outcome.DONE);
+
+        AnalysisJob.RunResult result = job(1, 10).runOnce();
+
+        assertThat(result.serviceUnavailable()).isFalse();
+        assertThat(result).extracting(AnalysisJob.RunResult::retried, AnalysisJob.RunResult::failed,
+                AnalysisJob.RunResult::done).containsExactly(1, 1, 1);
+    }
+
+    @Test
+    void backsOffWhileTheServiceIsUnavailableAndResetsWhenItAnswers() {
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any()))
+                .thenReturn(List.of(game(1L)));
+        when(analysisService.analyzeGame(1L)).thenReturn(Outcome.SERVICE_UNAVAILABLE);
+        AnalysisJob job = job(1, 10); // interval 30 s
+
+        assertThat(job.nextDelay()).isEqualTo(Duration.ofSeconds(30));
+        List<Duration> delays = new ArrayList<>();
+        for (int run = 0; run < 7; run++) {
+            job.runOnce();
+            delays.add(job.nextDelay());
+        }
+        assertThat(delays).extracting(Duration::toSeconds).containsExactly(60L, 120L, 240L, 480L, 600L, 600L, 600L);
+
+        when(analysisService.analyzeGame(1L)).thenReturn(Outcome.DONE);
+        job.runOnce();
+        assertThat(job.nextDelay()).isEqualTo(Duration.ofSeconds(30));
+
+        when(analysisService.analyzeGame(1L)).thenReturn(Outcome.SERVICE_UNAVAILABLE);
+        job.runOnce();
+        assertThat(job.nextDelay()).isEqualTo(Duration.ofSeconds(60));
+    }
+
+    @Test
+    void aRejectedGameAlsoShowsTheServiceIsBack() {
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any()))
+                .thenReturn(List.of(game(1L)));
+        when(analysisService.analyzeGame(1L)).thenReturn(Outcome.SERVICE_UNAVAILABLE, Outcome.RETRY, Outcome.FAILED);
+        AnalysisJob job = job(1, 10);
+
+        job.runOnce();
+        assertThat(job.nextDelay()).isEqualTo(Duration.ofSeconds(60));
+        job.runOnce(); // a timeout says nothing about availability: the back-off stays
+        assertThat(job.nextDelay()).isEqualTo(Duration.ofSeconds(60));
+        job.runOnce(); // a 422 (FAILED) is an answer
+        assertThat(job.nextDelay()).isEqualTo(Duration.ofSeconds(30));
+    }
+
+    @Test
+    void backOffNeverDropsBelowALongInterval() {
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any()))
+                .thenReturn(List.of(game(1L)));
+        when(analysisService.analyzeGame(1L)).thenReturn(Outcome.SERVICE_UNAVAILABLE);
+        AnalysisJob job = new AnalysisJob(games, analysisService, mock(PlatformTransactionManager.class),
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                new AnalysisJobProperties(false, 1, 10, Duration.ofMinutes(15), Duration.ofHours(1)), READ_TIMEOUT);
+
+        job.runOnce();
+
+        assertThat(job.nextDelay()).isEqualTo(Duration.ofMinutes(15));
     }
 
     @Test
@@ -119,7 +236,7 @@ class AnalysisJobTest {
         secondTime.startAnalysis(NOW.minus(Duration.ofHours(1)));
         when(games.findByAnalysisStatusAndAnalysisStartedAtBefore(AnalysisStatus.RUNNING, NOW.minus(STUCK_AFTER)))
                 .thenReturn(List.of(firstTime, secondTime));
-        when(games.findByAnalysisStatusOrderByPlayedAtAsc(eq(AnalysisStatus.PENDING), any())).thenReturn(List.of());
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any())).thenReturn(List.of());
 
         AnalysisJob.RunResult result = job(1, 10).runOnce();
 
@@ -133,11 +250,11 @@ class AnalysisJobTest {
 
     @Test
     void failedGamesAreNeverPickedUp() {
-        when(games.findByAnalysisStatusOrderByPlayedAtAsc(eq(AnalysisStatus.PENDING), any())).thenReturn(List.of());
+        when(games.findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.PENDING), any())).thenReturn(List.of());
 
         job(1, 10).runOnce();
 
-        verify(games, never()).findByAnalysisStatusOrderByPlayedAtAsc(eq(AnalysisStatus.FAILED), any());
+        verify(games, never()).findByAnalysisStatusOrderByPlayedAtDesc(eq(AnalysisStatus.FAILED), any());
         verify(analysisService, never()).analyzeGame(anyLong());
     }
 

@@ -132,9 +132,9 @@ class AnalysisEndToEndIT {
         Game game = games.save(new Game(account, "e2e-knight", Instant.parse("2026-11-13T12:00:00Z"), Speed.RAPID,
                 true, PieceColor.WHITE, GameResult.LOSS, KNIGHT_GAME));
 
-        AnalysisStatus status = analysisService.analyzeGame(game.getId());
+        AnalysisService.Outcome outcome = analysisService.analyzeGame(game.getId());
 
-        assertThat(status).isEqualTo(AnalysisStatus.DONE);
+        assertThat(outcome).isEqualTo(AnalysisService.Outcome.DONE);
         assertThat(games.findById(game.getId()).orElseThrow().getAnalysisStatus()).isEqualTo(AnalysisStatus.DONE);
 
         // One evaluation per ply, all from the pinned engine at the fixed depth.

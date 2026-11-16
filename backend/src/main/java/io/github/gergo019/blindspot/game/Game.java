@@ -101,14 +101,24 @@ public class Game extends BaseEntity {
     }
 
     // --- analysis lifecycle: PENDING -> RUNNING -> DONE | FAILED, FAILED -> RUNNING (manual retry),
-    // --- RUNNING (stuck) -> PENDING once, then FAILED
+    // --- RUNNING -> PENDING when the analysis service is unavailable (the attempt is given back),
+    // --- RUNNING (timed out or stuck) -> PENDING while attempts remain, then FAILED
 
     /**
-     * Attempts a game may use before a stuck analysis marks it FAILED: the
-     * first stuck attempt goes back to PENDING, the second one fails.
+     * Attempts a game may use before a timed-out or stuck analysis marks it
+     * FAILED: the first such attempt goes back to PENDING, the second one
+     * fails.
      */
     public static final int MAX_ANALYSIS_ATTEMPTS = 2;
 
+    /**
+     * Starts an attempt in memory. The background job does not call this: it
+     * claims games with {@link GameRepository#claimForAnalysis}, a conditional
+     * update that applies the same PENDING -> RUNNING transition (status,
+     * attempt count, start time) atomically in the database, because two
+     * workers that both loaded the game as PENDING would otherwise both start
+     * it. Keep the two in step.
+     */
     public void startAnalysis(Instant now) {
         if (analysisStatus != AnalysisStatus.PENDING && analysisStatus != AnalysisStatus.FAILED) {
             throw new IllegalStateException("Cannot start analysis from status " + analysisStatus);
@@ -131,6 +141,32 @@ public class Game extends BaseEntity {
      * @return the new status
      */
     public AnalysisStatus recoverStuckAnalysis() {
+        return retryOrFail();
+    }
+
+    /**
+     * The analysis service did not answer in time. That may be the game's
+     * fault (a pathological game), so the attempt counts: back to PENDING if
+     * the game has attempts left, otherwise FAILED.
+     *
+     * @return the new status
+     */
+    public AnalysisStatus timeOutAnalysis() {
+        return retryOrFail();
+    }
+
+    /**
+     * The analysis service was unavailable: not the game's fault. The game
+     * goes back to PENDING and the attempt is given back, so an outage of any
+     * length never fails a game.
+     */
+    public void releaseAnalysis() {
+        requireRunning();
+        analysisStatus = AnalysisStatus.PENDING;
+        analysisAttempts--;
+    }
+
+    private AnalysisStatus retryOrFail() {
         requireRunning();
         analysisStatus = analysisAttempts < MAX_ANALYSIS_ATTEMPTS ? AnalysisStatus.PENDING : AnalysisStatus.FAILED;
         return analysisStatus;

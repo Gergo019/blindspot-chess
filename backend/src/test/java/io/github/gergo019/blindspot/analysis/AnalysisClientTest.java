@@ -9,17 +9,31 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import java.io.IOException;
+import java.net.ConnectException;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.http.HttpConnectTimeoutException;
+import java.net.http.HttpTimeoutException;
+import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
+import io.github.gergo019.blindspot.analysis.AnalysisFailedException.Kind;
 import io.github.gergo019.blindspot.analysis.AnalyzeApi.AnalyzeRequest;
 import io.github.gergo019.blindspot.analysis.AnalyzeApi.AnalyzeResponse;
 import io.github.gergo019.blindspot.analysis.AnalyzeApi.ScoreDto;
+
+import com.sun.net.httpserver.HttpServer;
 
 /**
  * Contract test of the HTTP mapping against a stubbed analysis service. The
@@ -126,15 +140,102 @@ class AnalysisClientTest {
                 .isInstanceOf(AnalysisFailedException.class)
                 .hasMessageContaining("422")
                 .hasMessageContaining("Only completed games")
-                .extracting(e -> ((AnalysisFailedException) e).getStatus()).isEqualTo(422);
+                .extracting(e -> ((AnalysisFailedException) e).getStatus(), e -> ((AnalysisFailedException) e).getKind())
+                .containsExactly(422, Kind.REJECTED);
     }
 
     @Test
-    void serverErrorBecomesAnAnalysisFailure() {
+    void serverErrorMeansTheServiceIsUnavailable() {
         server.expect(requestTo("http://analysis-service/analyze")).andRespond(withServerError());
 
         assertThatThrownBy(() -> client.analyze(new AnalyzeRequest("1. e4 1-0", "WHITE")))
                 .isInstanceOf(AnalysisFailedException.class)
-                .extracting(e -> ((AnalysisFailedException) e).getStatus()).isEqualTo(500);
+                .extracting(e -> ((AnalysisFailedException) e).getStatus(), e -> ((AnalysisFailedException) e).getKind())
+                .containsExactly(500, Kind.UNAVAILABLE);
+    }
+
+    @Test
+    void onlyA422IsTheGamesFault() {
+        assertThat(AnalysisClient.kindOf(422)).isEqualTo(Kind.REJECTED);
+        for (int status : new int[] { 400, 404, 405, 413, 500, 502, 503, 504 }) {
+            assertThat(AnalysisClient.kindOf(status)).as("HTTP %d", status).isEqualTo(Kind.UNAVAILABLE);
+        }
+    }
+
+    @Test
+    void unreadableBodyIsAnInvalidResponse() {
+        server.expect(requestTo("http://analysis-service/analyze"))
+                .andRespond(withSuccess("{\"engine\": [", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.analyze(new AnalyzeRequest("1. e4 1-0", "WHITE")))
+                .isInstanceOf(AnalysisFailedException.class)
+                .extracting(e -> ((AnalysisFailedException) e).getKind()).isEqualTo(Kind.INVALID_RESPONSE);
+    }
+
+    @Test
+    void timeoutsAreToldApart() {
+        assertThat(AnalysisClient.isReadTimeout(new ResourceAccessException("x",
+                new HttpTimeoutException("request timed out")))).isTrue();
+        assertThat(AnalysisClient.isReadTimeout(new ResourceAccessException("x",
+                new HttpConnectTimeoutException("connect timed out")))).isFalse();
+        assertThat(AnalysisClient.isReadTimeout(new ResourceAccessException("x",
+                new ConnectException("Connection refused")))).isFalse();
+    }
+
+    // --- The real HTTP client (AnalysisClientConfig) against real failures, no mocks ---
+
+    @Test
+    void connectionRefusedMeansTheServiceIsUnavailable() throws IOException {
+        int closedPort;
+        try (ServerSocket socket = new ServerSocket(0)) {
+            closedPort = socket.getLocalPort();
+        }
+        AnalysisClient real = realClient("http://127.0.0.1:" + closedPort, Duration.ofSeconds(5));
+
+        assertThatThrownBy(() -> real.analyze(new AnalyzeRequest("1. e4 1-0", "WHITE")))
+                .isInstanceOf(AnalysisFailedException.class)
+                .extracting(e -> ((AnalysisFailedException) e).getKind()).isEqualTo(Kind.UNAVAILABLE);
+    }
+
+    @Test
+    void unknownHostMeansTheServiceIsUnavailable() {
+        // .invalid never resolves (RFC 2606).
+        AnalysisClient real = realClient("http://analysis-service.invalid:8000", Duration.ofSeconds(5));
+
+        assertThatThrownBy(() -> real.analyze(new AnalyzeRequest("1. e4 1-0", "WHITE")))
+                .isInstanceOf(AnalysisFailedException.class)
+                .extracting(e -> ((AnalysisFailedException) e).getKind()).isEqualTo(Kind.UNAVAILABLE);
+    }
+
+    @Test
+    void noAnswerWithinTheReadTimeoutIsATimeout() throws IOException {
+        HttpServer slow = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        CountDownLatch release = new CountDownLatch(1);
+        slow.createContext("/analyze", exchange -> {
+            try {
+                release.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.sendResponseHeaders(503, -1);
+            exchange.close();
+        });
+        slow.start();
+        try {
+            AnalysisClient real = realClient("http://127.0.0.1:" + slow.getAddress().getPort(),
+                    Duration.ofMillis(300));
+
+            assertThatThrownBy(() -> real.analyze(new AnalyzeRequest("1. e4 1-0", "WHITE")))
+                    .isInstanceOf(AnalysisFailedException.class)
+                    .extracting(e -> ((AnalysisFailedException) e).getKind()).isEqualTo(Kind.TIMEOUT);
+        } finally {
+            release.countDown();
+            slow.stop(0);
+        }
+    }
+
+    private static AnalysisClient realClient(String baseUrl, Duration readTimeout) {
+        return new AnalysisClient(new AnalysisClientConfig().analysisRestClient(RestClient.builder(), baseUrl,
+                readTimeout));
     }
 }
