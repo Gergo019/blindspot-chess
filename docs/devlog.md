@@ -59,6 +59,7 @@ No new finding appears in the other 13 games. **5 distinct games** keep a findin
 - Analysis-service tests in the Docker test image: 109 passed (engine tests included).
 - Each new rule is pinned: with the recapture guard removed, 2 tests fail; with the played-line guard removed, 1 test fails; without check replies as forcing, 2 tests fail.
 - Backend `mvn verify` in Docker: 75 unit tests and 22 integration tests green, including `AnalysisEndToEndIT` through the rebuilt analysis image (the knight game still gives `e5d4 ...`, now `hanging-0.3`).
+- CI on PR #42, first run green, **2m59s** in all. Analysis-service job 1m08s (109 tests in the image). Backend job 1m47s: 75 unit tests and 22 integration tests, `AnalysisEndToEndIT` 55.1 s. Compose stack 1m06s.
 
 **Open points / risks:**
 - **Known misses:** forcing lines longer than 8 plies (Qc2, #41), and material lost later in a line the user started with an even trade (00hjmrjd).
