@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-16: Release v0.1.0 (PR #PRNUM)
+## 2026-11-16: Release v0.1.0 (PR #48)
 
 **Goal:** Close Phase 1 with a tagged release: a fresh clone runs end to end with one command, and the CHANGELOG, README and this log say exactly what v0.1.0 does and does not do.
 
@@ -27,7 +27,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - `.env.example`: two stale comments fixed. The analysis job takes the *newest* PENDING games (since #30, the comment still said oldest), and evaluations record threads and hash size too (since #33).
 
 **Verification:**
-- **Getting started on a fresh clone**, run exactly as written (fresh `git clone` of main at 87295fe into a temp folder, `cp .env.example .env`, `docker compose up --build`, here with `-d`), on an Apple Silicon Mac: images built from scratch in about a minute; both `/health` endpoints UP (the analysis service reports Stockfish 19, depth 16, 1 thread, 64 MB). The `demo` profile loaded 20 games as PENDING; all 20 were DONE about 3.5 minutes after they were created (17:43:26 to 17:47:04 UTC), none FAILED.
+- **Getting started on a fresh clone**, run exactly as written (fresh `git clone` of main at 87295fe into a temp folder, `cp .env.example .env`, `docker compose up --build`, here with `-d`), on an Apple Silicon Mac: images built in about a minute (with the local Docker layer cache; the clone itself was fresh); both `/health` endpoints UP (the analysis service reports Stockfish 19, depth 16, 1 thread, 64 MB). The `demo` profile loaded 20 games as PENDING; all 20 were DONE about 3.5 minutes after they were created (17:43:26 to 17:47:04 UTC), none FAILED.
 - The README's findings query returned 5 `hanging-0.4` findings, as documented: 008j6z3b (White, ply 9, Qe2), 008pkspi (Black, ply 36, Rb6), 00ckuzm1 (Black, ply 66, Rc3+), 00jay4x6 (Black, ply 22, Be7), 00lv6mdm (Black, ply 16, Bh3). The first two are the golden-file games of #33.
 - All 1,238 stored evaluations record 1 thread and 64 MB (V4). No WARN or ERROR lines in the backend log.
 - CI_RESULT
@@ -42,7 +42,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - [#34](https://github.com/Gergo019/blindspot-chess/issues/34): cause and defence facts for HANGING_PIECE (already attacked, defended, why lost), which typed claims need before any explanation.
 - [#35](https://github.com/Gergo019/blindspot-chess/issues/35): decide whether a loose piece lost to a check or double attack is a HANGING_PIECE sub-type or a third motif.
 
-**Links:** [CHANGELOG 0.1.0](../CHANGELOG.md), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), release v0.1.0 (tagged on the merge commit after merging)
+**Links:** [CHANGELOG 0.1.0](../CHANGELOG.md), [PR #48](https://github.com/Gergo019/blindspot-chess/pull/48), release v0.1.0 (tagged on the merge commit after merging)
 
 ## 2026-11-16: Golden-file reproducibility test, pinned dependencies, engine threads and hash size (#33 / PR #46)
 
