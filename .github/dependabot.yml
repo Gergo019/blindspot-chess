@@ -36,11 +36,17 @@ updates:
       all:
         patterns: ["*"]
     ignore:
-      # Java: stay on the chosen LTS (eclipse-temurin:25-jre, maven:3.9-eclipse-temurin-25).
+      # Images are pinned by digest (tag@sha256): Dependabot keeps proposing new digests for the
+      # same tag, which is how patch releases of the image arrive. The rules below only stop it
+      # from changing the tag itself.
+      # Java: stay on the chosen LTS (eclipse-temurin:25-jre).
       - dependency-name: eclipse-temurin
         update-types: ["version-update:semver-major"]
+      # maven:3.9-eclipse-temurin-25 is read by Dependabot as version 3.9 with build number 25
+      # (dependabot-core docker/tag.rb), i.e. 3.9.25, so a JDK change to -26 looks like a PATCH
+      # update (#18). Ignore every tag change; Maven and JDK upgrades are done by hand.
       - dependency-name: maven
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       # Python: stay on the version the tests run on (python:3.13-slim).
       - dependency-name: python
         update-types: ["version-update:semver-major", "version-update:semver-minor"]

@@ -23,7 +23,7 @@ public final class TestData {
 
     /** After 1. e4 e5 2. Nf3 Nc6 3. Bc4 Nd4: White to move. */
     public static final String FORK_FEN = "r1bqkbnr/pppp1ppp/8/4p3/2BnP3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";
-    public static final EngineRun ENGINE = new EngineRun("Stockfish 17.1", 20);
+    public static final EngineRun ENGINE = new EngineRun("Stockfish 17.1", 20, 1, 64);
 
     private TestData() {
     }

@@ -4,7 +4,9 @@
 # amd64; the arm64 binary only exists so the image also builds natively on
 # Apple Silicon. Checksums are the SHA-256 values GitHub publishes for the
 # release assets: https://github.com/official-stockfish/Stockfish/releases/tag/sf_19
-FROM debian:bookworm-slim AS stockfish
+# Base images are pinned by digest (multi-platform index, so the same pin builds on
+# amd64 CI and arm64 Macs); Dependabot proposes digest updates as explicit PRs.
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS stockfish
 ARG TARGETARCH
 ARG STOCKFISH_VERSION=19
 ARG STOCKFISH_SHA256_AMD64=9defc0d4e55d49c65a6d042f3e571a39fcea499ade6dbe741b53b8c65e03611f
@@ -26,7 +28,7 @@ RUN set -eu; \
     cp /tmp/stockfish/Copying.txt /usr/local/share/stockfish-COPYING.txt
 
 # ---- Runtime base ----
-FROM python:3.13-slim AS base
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 AS base
 ARG STOCKFISH_VERSION=19
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -37,7 +39,8 @@ COPY --from=stockfish /usr/local/bin/stockfish /usr/local/bin/stockfish
 COPY --from=stockfish /usr/local/share/stockfish-COPYING.txt /usr/local/share/doc/stockfish/COPYING.txt
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Exact versions with hashes (pip-compile); anything unpinned or tampered with fails the build.
+RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 COPY app ./app
 RUN useradd --system --uid 1001 app
 
@@ -45,7 +48,7 @@ RUN useradd --system --uid 1001 app
 # CI: docker build --target test -t analysis-test . && docker run --rm analysis-test
 FROM base AS test
 COPY requirements-dev.txt pytest.ini ./
-RUN pip install --no-cache-dir -r requirements-dev.txt
+RUN pip install --no-cache-dir --require-hashes -r requirements-dev.txt
 COPY tests ./tests
 USER app
 CMD ["python", "-m", "pytest", "-v", "-p", "no:cacheprovider"]

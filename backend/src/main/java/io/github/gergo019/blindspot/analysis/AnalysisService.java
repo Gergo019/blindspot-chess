@@ -155,7 +155,7 @@ public class AnalysisService {
         List<MistakeFinding> found = new ArrayList<>();
         try {
             EngineRun engine = new EngineRun(response.engine().name() + " " + response.engine().version(),
-                    response.engine().depth());
+                    response.engine().depth(), response.engine().threads(), response.engine().hashMb());
             Map<Integer, MoveEvaluation> byPly = new HashMap<>();
             for (MoveDto move : response.moves()) {
                 MoveEvaluation evaluation = new MoveEvaluation(game, move.ply(), move.byUser(), move.fenBefore(),

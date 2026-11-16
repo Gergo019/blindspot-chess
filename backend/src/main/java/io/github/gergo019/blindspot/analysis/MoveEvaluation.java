@@ -59,6 +59,14 @@ public class MoveEvaluation extends BaseEntity {
     @Column(name = "engine_depth", nullable = false)
     private int engineDepth;
 
+    /** Stockfish Threads; null only for evaluations stored before V4. */
+    @Column(name = "engine_threads")
+    private Integer engineThreads;
+
+    /** Stockfish Hash in MB; null only for evaluations stored before V4. */
+    @Column(name = "engine_hash_mb")
+    private Integer engineHashMb;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private MoveClassification classification;
@@ -82,6 +90,8 @@ public class MoveEvaluation extends BaseEntity {
         this.mateAfter = after.mateIn();
         this.engineVersion = engine.version();
         this.engineDepth = engine.depth();
+        this.engineThreads = engine.threads();
+        this.engineHashMb = engine.hashMb();
         this.classification = classification;
     }
 
@@ -107,12 +117,27 @@ public class MoveEvaluation extends BaseEntity {
     }
 
     /** Which engine produced the evaluation and how deep it searched; makes results reproducible. */
-    public record EngineRun(String version, int depth) {
+    /**
+     * Everything that decides the engine's output (ADR 0002): version, depth, threads and hash size.
+     * Threads and hash size are null only for evaluations stored before they were recorded (V4).
+     */
+    public record EngineRun(String version, int depth, Integer threads, Integer hashMb) {
 
         public EngineRun {
             if (version == null || version.isBlank() || depth <= 0) {
                 throw new IllegalArgumentException("Engine version and a positive depth are required");
             }
+            if ((threads == null) != (hashMb == null)) {
+                throw new IllegalArgumentException("Threads and hash size are recorded together");
+            }
+            if (threads != null && (threads <= 0 || hashMb <= 0)) {
+                throw new IllegalArgumentException("Threads and hash size must be positive");
+            }
+        }
+
+        /** Whether this run records every setting needed to reproduce it. */
+        public boolean isComplete() {
+            return threads != null;
         }
     }
 
@@ -157,7 +182,7 @@ public class MoveEvaluation extends BaseEntity {
     }
 
     public EngineRun getEngineRun() {
-        return new EngineRun(engineVersion, engineDepth);
+        return new EngineRun(engineVersion, engineDepth, engineThreads, engineHashMb);
     }
 
     public MoveClassification getClassification() {

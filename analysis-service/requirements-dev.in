@@ -1,0 +1,7 @@
+# Test dependencies. The runtime versions are constrained to the ones in requirements.txt,
+# so tests run against exactly what ships. Edit this file, never requirements-dev.txt.
+-c requirements.txt
+-r requirements.in
+pytest>=9.2.0,<10.0
+httpx2>=2.16,<3.0
+hypothesis==6.168.5

@@ -149,6 +149,8 @@ class AnalysisEndToEndIT {
         assertThat(moves).allSatisfy(m -> {
             assertThat(m.getEngineRun().version()).isEqualTo("Stockfish 19");
             assertThat(m.getEngineRun().depth()).isEqualTo(16);
+            assertThat(m.getEngineRun().threads()).isEqualTo(1);
+            assertThat(m.getEngineRun().hashMb()).isEqualTo(64);
         });
         assertThat(moves.get(KNIGHT_PLY - 1).isTrainableMistake()).isTrue();
 

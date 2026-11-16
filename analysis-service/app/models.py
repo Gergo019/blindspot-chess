@@ -50,9 +50,13 @@ class Score(_CamelModel):
 
 
 class EngineInfo(_CamelModel):
+    """The engine and the settings that decide its output; all of them are needed to reproduce it (ADR 0002)."""
+
     name: str
     version: str
     depth: int
+    threads: int
+    hash_mb: int
 
 
 class MoveEvaluation(_CamelModel):

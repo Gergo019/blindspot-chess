@@ -44,7 +44,7 @@ class AnalysisClientTest {
     /** Fool's mate analysed for White, with a made-up finding to cover the mapping. */
     static final String RESPONSE = """
             {
-              "engine": { "name": "Stockfish", "version": "19", "depth": 16 },
+              "engine": { "name": "Stockfish", "version": "19", "depth": 16, "threads": 1, "hashMb": 64 },
               "moves": [
                 { "ply": 3, "byUser": true,
                   "fenBefore": "rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq - 0 2",
@@ -123,7 +123,7 @@ class AnalysisClientTest {
     void responseWithoutFindingsGivesAnEmptyList() {
         server.expect(requestTo("http://analysis-service/analyze"))
                 .andRespond(withSuccess("""
-                        {"engine":{"name":"Stockfish","version":"19","depth":16},"moves":[]}
+                        {"engine":{"name":"Stockfish","version":"19","depth":16,"threads":1,"hashMb":64},"moves":[]}
                         """, MediaType.APPLICATION_JSON));
 
         assertThat(client.analyze(new AnalyzeRequest("1. e4 1-0", "WHITE")).findings()).isEmpty();

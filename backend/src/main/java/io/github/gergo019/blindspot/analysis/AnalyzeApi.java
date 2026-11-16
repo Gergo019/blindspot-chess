@@ -23,7 +23,8 @@ public final class AnalyzeApi {
         }
     }
 
-    public record EngineInfo(String name, String version, int depth) {
+    /** The engine and its settings; threads and hash size are required (a missing one becomes 0 and is rejected). */
+    public record EngineInfo(String name, String version, int depth, int threads, int hashMb) {
     }
 
     /** One half-move; scores are from White's point of view. */

@@ -65,7 +65,9 @@ class TestAnalyze:
         assert response.status_code == 200
         body = response.json()
         assert body["engine"]["name"] == "Stockfish"
-        assert set(body["engine"]) == {"name", "version", "depth"}
+        assert set(body["engine"]) == {"name", "version", "depth", "threads", "hashMb"}
+        # The image runs with the documented settings (ADR 0002); both are part of reproducibility.
+        assert (body["engine"]["threads"], body["engine"]["hashMb"]) == (1, 64)
         assert len(body["moves"]) == 4
         first = body["moves"][0]
         assert set(first) == {
@@ -98,3 +100,5 @@ class TestAnalyze:
         assert body["engineName"] == "Stockfish"
         assert body["engineVersion"]
         assert body["engineDepth"] >= 1
+        assert body["engineThreads"] >= 1
+        assert body["engineHashMb"] >= 1

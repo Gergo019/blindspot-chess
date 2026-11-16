@@ -63,6 +63,7 @@ class SchemaIT {
     @Autowired DrillRepository drills;
     @Autowired DrillAttemptRepository attempts;
     @Autowired JdbcTemplate jdbc;
+    @Autowired jakarta.persistence.EntityManager entityManager;
 
     @Test
     void healthReportsDatabaseUp() {
@@ -160,5 +161,40 @@ class SchemaIT {
 
         assertThatThrownBy(() -> jdbc.update("UPDATE games SET analysis_attempts = -1 WHERE id = ?", game.getId()))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void engineThreadsAndHashSizeAreStoredWithEveryEvaluation() {
+        Game game = games.save(TestData.game(accounts.save(TestData.lichessAccount(users.save(TestData.user("eng")))),
+                "eng"));
+        MoveEvaluation stored = evaluations.saveAndFlush(TestData.userBlunder(game, 7));
+
+        assertThat(jdbc.queryForList("SELECT engine_threads, engine_hash_mb FROM move_evaluations WHERE id = ?",
+                stored.getId()).get(0)).containsEntry("engine_threads", 1).containsEntry("engine_hash_mb", 64);
+    }
+
+    @Test
+    void anEvaluationStoredBeforeV4LoadsWithoutEngineSettings() {
+        Game game = games.save(TestData.game(accounts.save(TestData.lichessAccount(users.save(TestData.user("old")))),
+                "old"));
+        MoveEvaluation stored = evaluations.saveAndFlush(TestData.userBlunder(game, 7));
+        jdbc.update("UPDATE move_evaluations SET engine_threads = NULL, engine_hash_mb = NULL WHERE id = ?",
+                stored.getId());
+        evaluations.flush();
+        entityManager.clear();
+
+        MoveEvaluation.EngineRun run = evaluations.findById(stored.getId()).orElseThrow().getEngineRun();
+        assertThat(run.isComplete()).isFalse();
+        assertThat(run.version()).isEqualTo(TestData.ENGINE.version());
+    }
+
+    @Test
+    void engineThreadsAndHashSizeAreRecordedTogether() {
+        Game game = games.save(TestData.game(accounts.save(TestData.lichessAccount(users.save(TestData.user("half")))),
+                "half"));
+        MoveEvaluation stored = evaluations.saveAndFlush(TestData.userBlunder(game, 7));
+
+        assertThatThrownBy(() -> jdbc.update("UPDATE move_evaluations SET engine_hash_mb = NULL WHERE id = ?",
+                stored.getId())).isInstanceOf(DataIntegrityViolationException.class);
     }
 }
