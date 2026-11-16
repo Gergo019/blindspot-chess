@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-16: ADR 0007, frontend decisions, and UI before Phase 2 (#49 / PR #PRNUM)
+## 2026-11-16: ADR 0007, frontend decisions, and UI before Phase 2 (#49 / PR #53)
 
 **Goal:** Settle the frontend's board component, licences, layout and theme before any frontend code, and record the new order of work.
 
@@ -29,7 +29,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - The light theme's contrast for the orange and blue highlights on the blue-grey squares is checked in #50; if one falls short, the highlight style changes, not the colours.
 - react-chessboard is maintained by one person. The board is wrapped in our own `EvidenceBoard`, so a replacement would touch one component.
 
-**Links:** [#49](https://github.com/Gergo019/blindspot-chess/issues/49), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [#50](https://github.com/Gergo019/blindspot-chess/issues/50), [#51](https://github.com/Gergo019/blindspot-chess/issues/51), [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [#52](https://github.com/Gergo019/blindspot-chess/issues/52), [#26](https://github.com/Gergo019/blindspot-chess/issues/26)
+**Links:** [#49](https://github.com/Gergo019/blindspot-chess/issues/49), [PR #53](https://github.com/Gergo019/blindspot-chess/pull/53), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [#50](https://github.com/Gergo019/blindspot-chess/issues/50), [#51](https://github.com/Gergo019/blindspot-chess/issues/51), [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [#52](https://github.com/Gergo019/blindspot-chess/issues/52), [#26](https://github.com/Gergo019/blindspot-chess/issues/26)
 
 ## 2026-11-16: Release v0.1.0 (PR #48)
 
