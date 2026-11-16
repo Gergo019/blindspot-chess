@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-16: Golden-file reproducibility test, pinned dependencies, engine threads and hash size (#33 / PR #PRNUM)
+## 2026-11-16: Golden-file reproducibility test, pinned dependencies, engine threads and hash size (#33 / PR #46)
 
 **Goal:** Make "analysis is reproducible" (product rule 4) checkable instead of assumed. Phase 1 hardening item H4 from the 2026-11-14 code review.
 
@@ -40,7 +40,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - Every intended output change (Stockfish upgrade, other defaults, a new detector version) now has to regenerate the golden files in the same PR, with a devlog entry. That is the point, but it is extra work.
 - Golden files cover two games. They catch drift in the engine, the settings, the classifier and the hanging-piece detector, but not every code path.
 
-**Links:** [#33](https://github.com/Gergo019/blindspot-chess/issues/33), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [ADR 0002](decisions/0002-python-analysis-service.md), [#18](https://github.com/Gergo019/blindspot-chess/pull/18), [dependabot-core docker tag.rb](https://github.com/dependabot/dependabot-core/blob/main/docker/lib/dependabot/docker/tag.rb), the code review of 2026-11-14
+**Links:** [#33](https://github.com/Gergo019/blindspot-chess/issues/33), [PR #46](https://github.com/Gergo019/blindspot-chess/pull/46), [ADR 0002](decisions/0002-python-analysis-service.md), [#18](https://github.com/Gergo019/blindspot-chess/pull/18), [dependabot-core docker tag.rb](https://github.com/dependabot/dependabot-core/blob/main/docker/lib/dependabot/docker/tag.rb), the code review of 2026-11-14
 
 ## 2026-11-16: PGN validation, no 500 from /analyze (#32 / PR #45)
 
