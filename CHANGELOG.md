@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- Reproducible analysis image (#33): base images pinned by digest in both Dockerfiles; Python dependencies locked with hashes (`requirements.in` -> `requirements.txt` via pip-compile `--generate-hashes`) and installed with `--require-hashes`; backend build image back to `maven:3.9-eclipse-temurin-25`, and Dependabot no longer proposes tag changes of `maven` (the JDK hides in the tag suffix)
 - Analysis service PGN validation (#32): 422 for null moves, an invalid start position, more than one game, a movetext result that contradicts the `Result` header, and moves after checkmate, stalemate, insufficient material or the 75-move rule. A game that continues after a fivefold repetition is analysed up to it (real Lichess games do this). Unreadable input is always a 422, never a 500, and the analysis loop never reads a missing best move. A property-based test (Hypothesis) checks this on random, truncated and junk PGNs
 - Hanging-piece detector `hanging-0.4` (#31 follow-up): when the user's capture is recaptured on the same square, all captures on that square in the engine's line are summed, and a finding needs a net loss of at least 2 there. Nxd5 exd5 Qxd5 with pawns on d5 (net 1) no longer fires
 - CONTRIBUTING: pull requests are opened as drafts and marked ready only with the final report
@@ -18,6 +19,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Golden-file reproducibility test (#33): the full `/analyze` output for two demo games (White and Black user) is compared exactly on every CI run; `tests/golden/regenerate.py` regenerates it only when run explicitly
+- `/analyze` and `/health` report the engine's threads and hash size; Flyway `V4` stores them on `move_evaluations` (NULL for older rows), and the backend's `EngineRun` carries them (#33)
 - Demo data (#23): the `demo` Spring profile (`SPRING_PROFILES_ACTIVE=demo`, the default in `.env.example`) loads 20 real rapid games from the Lichess open database (2013-01, CC0) for the fictional user `demo` on first start, through the normal importer, as PENDING games for the background analysis; 7 of them have a hanging-piece finding. It switches the live Lichess import off. The games are selected by `tools/demo-data/select_demo_games.py`, which is deterministic and documents its source, checksum and rules
 - Background analysis of imported games (#22): `AnalysisJob` analyses PENDING games (oldest first; newest first since #30), a bounded batch per run, `ANALYSIS_WORKERS` at a time (default 1). A game stuck in RUNNING longer than `ANALYSIS_STUCK_AFTER` (default 30 min) goes back to PENDING once, then FAILED; recovery runs at startup and on every run. FAILED games are not retried automatically
 - Flyway `V3`: `analysis_attempts` and `analysis_started_at` on `games`, with check constraints (#22)

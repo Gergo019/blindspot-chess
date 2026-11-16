@@ -78,7 +78,12 @@ class DomainRulesTest {
         assertThat(Score.mate(3).mateIn()).isEqualTo(3);
         assertThatThrownBy(() -> new Score(50, 2)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new Score(null, null)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new EngineRun("", 20)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new EngineRun("", 20, 1, 64)).isInstanceOf(IllegalArgumentException.class);
+        // Threads and hash size: both or neither (neither only for rows stored before V4), and positive.
+        assertThat(new EngineRun("Stockfish 19", 16, null, null).isComplete()).isFalse();
+        assertThat(new EngineRun("Stockfish 19", 16, 1, 64).isComplete()).isTrue();
+        assertThatThrownBy(() -> new EngineRun("Stockfish 19", 16, 1, null)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new EngineRun("Stockfish 19", 16, 0, 64)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

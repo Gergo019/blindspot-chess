@@ -9,7 +9,7 @@ These shape design and tests more than any Git convention:
 1. **Completed games only.** The importer and the analysis pipeline never touch a game in progress.
 2. **Every coaching claim shown to a player has board evidence** they can play through: a finding without an evidence line is invalid.
 3. **Only verified explanations are shown.** Player-facing code reads explanations through `ExplanationRepository.findShowable`, never directly. In v1 that means text rendered from validated typed claims; free-form AI text stays an experiment (ADR 0003).
-4. **Analysis is reproducible.** Every evaluation records the engine version and search depth.
+4. **Analysis is reproducible.** Every evaluation records the engine version, search depth, threads and hash size, and the golden files pin the analysis output (ADR 0002).
 
 ## Workflow
 
@@ -40,6 +40,8 @@ These shape design and tests more than any Git convention:
 - Domain rules live in the entities and are unit-tested without Spring; integration tests use Testcontainers, never H2.
 - Backend layering: controller -> service -> repository. Entities never leave the API; use DTOs (records).
 - External APIs are tested against recorded responses, never live.
+- **Golden files** (`analysis-service/tests/golden/`) pin the full `/analyze` output. Regenerate them only on purpose (`python -m tests.golden.regenerate --write`, see the script), and **every regeneration needs a devlog entry explaining why the output changed** (new Stockfish, other engine settings, new detector version). A golden diff nobody can explain is a bug, not a file to regenerate.
+- Python dependencies: edit `requirements.in` / `requirements-dev.in`, then recompile the `.txt` files with pip-compile `--generate-hashes` (command in the file header). Never edit the `.txt` files by hand.
 - No secrets in Git. New settings go into `.env.example` with a comment; a leaked secret is rotated immediately.
 - No `TODO` without an issue number (`// TODO(#34): ...`).
 

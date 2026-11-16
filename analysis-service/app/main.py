@@ -51,7 +51,13 @@ def health(settings: SettingsDep) -> dict[str, str | int]:
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     if info:
-        body.update(engineName=info.name, engineVersion=info.version, engineDepth=info.depth)
+        body.update(
+            engineName=info.name,
+            engineVersion=info.version,
+            engineDepth=info.depth,
+            engineThreads=info.threads,
+            engineHashMb=info.hash_mb,
+        )
     return body
 
 

@@ -128,6 +128,16 @@ class AnalysisServiceTest {
     }
 
     @Test
+    void aResponseWithoutEngineThreadsAndHashSizeIsAnInvalidResponse() {
+        // An older analysis service, or a contract mismatch: the settings are needed to reproduce the result.
+        server.expect(requestTo(URL)).andRespond(withSuccess(
+                AnalysisClientTest.RESPONSE.replace(", \"threads\": 1, \"hashMb\": 64", ""), MediaType.APPLICATION_JSON));
+
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.INVALID_RESPONSE_RETRY);
+        verify(evaluations, never()).saveAll(anyList());
+    }
+
+    @Test
     void contentTheDatabaseRejectsIsAnInvalidResponse() {
         server.expect(requestTo(URL)).andRespond(withSuccess(AnalysisClientTest.RESPONSE, MediaType.APPLICATION_JSON));
         doThrow(new DataIntegrityViolationException("duplicate key value violates move_evaluations_game_ply_uq"))
@@ -234,7 +244,7 @@ class AnalysisServiceTest {
         verify(evaluations).saveAll(storedMoves.capture());
         List<MoveEvaluation> stored = storedMoves.getValue();
         assertThat(stored).extracting(MoveEvaluation::getPly).containsExactly(3, 4);
-        assertThat(stored.get(0).getEngineRun().version()).isEqualTo("Stockfish 19");
+        assertThat(stored.get(0).getEngineRun()).isEqualTo(new MoveEvaluation.EngineRun("Stockfish 19", 16, 1, 64));
         assertThat(stored.get(1).getScoreAfter()).isEqualTo(MoveEvaluation.Score.mate(0));
 
         @SuppressWarnings("unchecked")

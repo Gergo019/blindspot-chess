@@ -60,7 +60,9 @@ class Engine:
         self._engine = engine
         self._limit = chess.engine.Limit(depth=settings.depth)
         name, version = split_engine_id(engine.id.get("name", "unknown"))
-        self.info = EngineInfo(name=name, version=version, depth=settings.depth)
+        self.info = EngineInfo(
+            name=name, version=version, depth=settings.depth, threads=settings.threads, hash_mb=settings.hash_mb
+        )
 
     def evaluate(self, board: chess.Board) -> PositionEval:
         outcome = board.outcome(claim_draw=False)

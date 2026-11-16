@@ -4,6 +4,44 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-16: Golden-file reproducibility test, pinned dependencies, engine threads and hash size (#33 / PR #PRNUM)
+
+**Goal:** Make "analysis is reproducible" (product rule 4) checkable instead of assumed. Phase 1 hardening item H4 from the 2026-11-14 code review.
+
+**Changes:**
+- **Golden files:** `analysis-service/tests/golden/` holds the full `POST /analyze` output (request and response) for two demo games: `008j6z3b` (user White, 42 plies, a hanging-piece finding at ply 9) and `008pkspi` (user Black, 39 plies, a hanging-piece finding at ply 36). `tests/test_golden.py` compares the live output exactly: engine block first, then ply by ply, then the findings, then the whole response. `tests/golden/regenerate.py` rewrites them only with `--write`; without it, it only reports which files would change and exits 1 if any would.
+- **Hashed Python dependencies:** `requirements.in` and `requirements-dev.in` hold the direct dependencies at their existing exact versions; `requirements.txt` and `requirements-dev.txt` are compiled by pip-compile with `--generate-hashes` (the command is in each file's header). The Dockerfile installs both with `--require-hashes`.
+- **Base images pinned by digest** in both Dockerfiles: `debian:bookworm-slim`, `python:3.13-slim`, `maven:3.9-eclipse-temurin-25` and `eclipse-temurin:25-jre`, each `tag@sha256:<index digest>`. The digests are those of the multi-platform image index, so the same pin builds on amd64 (CI) and arm64 (Mac).
+- **Backend build image back to `maven:3.9-eclipse-temurin-25`** (Dependabot had moved it to `-26`, a non-LTS JDK, in #18), and `.github/dependabot.yml` now ignores every tag change of `maven` (see Decisions).
+- **Threads and hash size recorded:** the `/analyze` engine block and `/health` return `threads` and `hashMb`. Flyway `V4__engine_settings.sql` adds `engine_threads` and `engine_hash_mb` to `move_evaluations` (nullable: NULL means "stored before V4, not recorded"; positive if set; both set or both NULL). `EngineRun` in the backend carries them, validates them, and `isComplete()` says whether a stored run records every setting. V1 to V3 are unchanged.
+- Docs: ADR 0002 (what reproducibility guarantees and what it does not), CONTRIBUTING (golden-file regeneration needs a devlog entry; dependencies are edited in the `.in` files), analysis-service README, CHANGELOG.
+
+**Decisions:**
+- **Exact comparison, not a tolerance.** With a single thread, a fixed hash, `ucinewgame` before every position and a pinned binary, Stockfish is deterministic, so any difference is a real change (engine, settings, detector or dependency). A tolerance would hide exactly the drift the test is for.
+- **Golden games from the demo data**, because they are real games already in the repo under CC0, and both have a finding, so the files pin the detector too, not only the evaluations.
+- **What the `maven` Dependabot rule does.** From dependabot-core's Docker tag parser (`docker/lib/dependabot/docker/tag.rb`): a tag like `3.9-eclipse-temurin-25` matches its `WORD_WITH_BUILD` pattern (`-words-<number>`), so the whole tag is the "version", words are stripped and it is compared as **3.9.25**; the format `<version>-eclipse-temurin-<build_num>` is kept. A JDK change from `-25` to `-26` is therefore a semver **patch** update (3.9.25 to 3.9.26), which is why ignoring major updates did not stop #18, and a Maven 3.10 with JDK 25 would be a minor update. The rule now ignores major, minor and patch updates of `maven`.
+  - It **does** stop Dependabot from changing the tag at all: no JDK change in the suffix, no Maven minor upgrade.
+  - It **does not** stop digest updates of the same tag: `maven:3.9-eclipse-temurin-25` is a moving tag, and its new digests (Maven 3.9.x patches, JDK 25.0.x patches, OS fixes) still arrive as explicit PRs. That is intended.
+  - It **does not** upgrade Maven or the JDK for us: those are manual changes now, as for the Java LTS and Python versions. And it does not cover other images: `eclipse-temurin` still ignores only major updates, `python` major and minor.
+  - The alternative, a `versions` range, was rejected: the "version" Dependabot compares mixes Maven and JDK numbers, so no range expresses "same JDK".
+- **pip-tools version.** pip-compile 7.5.3 (the version Dependabot runs) and 7.6.0 fail with the image's pip 26.2.2 (`make_requirement_preparer() missing … 'allow_editables'`). The files were compiled with pip-tools 7.7.0 in a throwaway container. Because 7.7.0 was released the same day, I cross-checked with pip-tools 7.6.0 on pip 25.3 (released 2025-10-25): identical pins and hashes, only the header differs. pip-tools is never installed in the image; it only writes the lock files.
+- **Dependabot and the lock files:** Dependabot's pip ecosystem recognises pip-compile output (the header and the `.in` next to it), updates the `.in` pin and recompiles with the options in the header, so `--generate-hashes` is kept. The pip entry in `dependabot.yml` is unchanged.
+- **Threads and hash size are nullable**, not backfilled with 1 and 64: the service probably ran with those values, but a default would claim something that cannot be proven per row. `EngineRun` requires both or neither, and so does a check constraint.
+
+**Verification:**
+- **arm64 (this Mac, Apple Silicon, Stockfish `linux-arm64-universal`):** the golden files were generated here; afterwards, in a freshly built test image, `regenerate.py` without `--write` reports both files unchanged, and the full analysis-service suite passes: 148 passed in 90 s, including the 3 golden tests (`uname -m`: `aarch64`).
+- **amd64:** CI runs the same golden tests on the x86-64 binary. CI_RESULT
+- Analysis-service image builds with `--require-hashes` for both lock files.
+- Backend `mvn verify` in Docker: 76 unit tests and 26 integration tests green, including the new `SchemaIT` tests (threads and hash size stored; a pre-V4 row with NULLs loads with `isComplete() == false`; one without the other is rejected by the database) and `DomainRulesTest` for `EngineRun`.
+
+**Open points / risks:**
+- The first monthly Docker run of Dependabot should show digest-update PRs for the pinned tags and no `maven` tag change. If it proposes a tag change, or no digest updates at all, revisit the ignore rule.
+- The first weekly pip run should produce a PR with regenerated hashes. If Dependabot's pip-compile (7.5.3) cannot compile with the current pip, the PR fails visibly; recompile by hand then.
+- Every intended output change (Stockfish upgrade, other defaults, a new detector version) now has to regenerate the golden files in the same PR, with a devlog entry. That is the point, but it is extra work.
+- Golden files cover two games. They catch drift in the engine, the settings, the classifier and the hanging-piece detector, but not every code path.
+
+**Links:** [#33](https://github.com/Gergo019/blindspot-chess/issues/33), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [ADR 0002](decisions/0002-python-analysis-service.md), [#18](https://github.com/Gergo019/blindspot-chess/pull/18), [dependabot-core docker tag.rb](https://github.com/dependabot/dependabot-core/blob/main/docker/lib/dependabot/docker/tag.rb), the code review of 2026-11-14
+
 ## 2026-11-16: PGN validation, no 500 from /analyze (#32 / PR #45)
 
 **Goal:** Every malformed or impossible game is a 422 with a clear message, and no input can make `POST /analyze` answer 500. Phase 1 hardening item H3 from the 2026-11-14 code review (A6).
