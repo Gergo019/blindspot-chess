@@ -4,18 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
-### Changed
+## [0.1.0] - 2026-11-16
 
-- Reproducible analysis image (#33): base images pinned by digest in both Dockerfiles; Python dependencies locked with hashes (`requirements.in` -> `requirements.txt` via pip-compile `--generate-hashes`) and installed with `--require-hashes`; backend build image back to `maven:3.9-eclipse-temurin-25`, and Dependabot no longer proposes tag changes of `maven` (the JDK hides in the tag suffix)
-- Analysis service PGN validation (#32): 422 for null moves, an invalid start position, more than one game, a movetext result that contradicts the `Result` header, and moves after checkmate, stalemate, insufficient material or the 75-move rule. A game that continues after a fivefold repetition is analysed up to it (real Lichess games do this). Unreadable input is always a 422, never a 500, and the analysis loop never reads a missing best move. A property-based test (Hypothesis) checks this on random, truncated and junk PGNs
-- Hanging-piece detector `hanging-0.4` (#31 follow-up): when the user's capture is recaptured on the same square, all captures on that square in the engine's line are summed, and a finding needs a net loss of at least 2 there. Nxd5 exd5 Qxd5 with pawns on d5 (net 1) no longer fires
-- CONTRIBUTING: pull requests are opened as drafts and marked ready only with the final report
-- Hanging-piece detector `hanging-0.3` (#31, [ADR 0004](docs/decisions/0004-hanging-piece-detector.md)): the loss is measured against the engine's best line from the position before the move, over windows of equal length that run through captures, checks and replies to checks (4 to 8 plies); a line still forcing at the end of its window is not judged. When the user's move captures and the opponent recaptures on the same square, only that exchange is judged (a knight taking a defended pawn: loss 2; an even trade: no finding). Otherwise the played line itself must lose at least 2 points, so a missed win does not count as a hung piece. The demo now shows hanging-piece findings in 5 of its 20 games (was 7)
-- Background analysis handles failures by kind ([ADR 0005](docs/decisions/0005-failure-handling-in-background-analysis.md)) (#30): a rejected game (422) or an unreadable response is FAILED at once; an unavailable analysis service (connection refused, host not found, 5xx, other error statuses) puts the game back to PENDING without using an attempt, stops the run and backs off (twice `ANALYSIS_INTERVAL`, doubling up to 10 minutes, reset when the service answers); a read timeout puts the game back while attempts remain (2), then fails it. An outage of any length no longer fails games
-- Games are claimed for analysis with one conditional update (PENDING -> RUNNING), so two workers can never analyse the same game (#30)
-- The analysis job takes the newest PENDING games first, not the oldest (#30)
-- Only `TEMPLATE` explanations that passed verification are showable; a passed LLM text is not (ADR 0003) (#30)
-- Docker Compose starts the backend once the analysis service is healthy (a `/health` check that requires a working engine) (#30)
+Phase 1: import, analysis, hanging-piece detection and demo data. No user interface yet.
 
 ### Added
 
@@ -46,6 +37,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- Reproducible analysis image (#33): base images pinned by digest in both Dockerfiles; Python dependencies locked with hashes (`requirements.in` -> `requirements.txt` via pip-compile `--generate-hashes`) and installed with `--require-hashes`; backend build image back to `maven:3.9-eclipse-temurin-25`, and Dependabot no longer proposes tag changes of `maven` (the JDK hides in the tag suffix)
+- CONTRIBUTING: pull requests are opened as drafts and marked ready only with the final report
+- The analysis job takes the newest PENDING games first, not the oldest (#30)
+- Only `TEMPLATE` explanations that passed verification are showable; a passed LLM text is not (ADR 0003) (#30)
+- Docker Compose starts the backend once the analysis service is healthy (a `/health` check that requires a working engine) (#30)
 - Analysis read timeout (`ANALYSIS_SERVICE_READ_TIMEOUT`, 180 s) is now backed by a measurement: 105 to 165 ms per half-move at depth 16, about 50 s for the longest accepted game (#22)
 - The Spring scheduler has two threads, so a long analysis run does not hold up the Lichess import (#22)
 - Lichess test fixture: the two players of the recorded game in progress are replaced with placeholder names (#22)
@@ -56,5 +52,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- Analysis service PGN validation (#32): 422 for null moves, an invalid start position, more than one game, a movetext result that contradicts the `Result` header, and moves after checkmate, stalemate, insufficient material or the 75-move rule. A game that continues after a fivefold repetition is analysed up to it (real Lichess games do this). Unreadable input is always a 422, never a 500, and the analysis loop never reads a missing best move. A property-based test (Hypothesis) checks this on random, truncated and junk PGNs
+- Hanging-piece detector `hanging-0.4` (#31 follow-up): when the user's capture is recaptured on the same square, all captures on that square in the engine's line are summed, and a finding needs a net loss of at least 2 there. Nxd5 exd5 Qxd5 with pawns on d5 (net 1) no longer fires
+- Hanging-piece detector `hanging-0.3` (#31, [ADR 0004](docs/decisions/0004-hanging-piece-detector.md)): the loss is measured against the engine's best line from the position before the move, over windows of equal length that run through captures, checks and replies to checks (4 to 8 plies); a line still forcing at the end of its window is not judged. When the user's move captures and the opponent recaptures on the same square, only that exchange is judged (a knight taking a defended pawn: loss 2; an even trade: no finding). Otherwise the played line itself must lose at least 2 points, so a missed win does not count as a hung piece. The demo now shows hanging-piece findings in 5 of its 20 games (was 7)
+- Background analysis handles failures by kind ([ADR 0005](docs/decisions/0005-failure-handling-in-background-analysis.md)) (#30): a rejected game (422) or an unreadable response is FAILED at once; an unavailable analysis service (connection refused, host not found, 5xx, other error statuses) puts the game back to PENDING without using an attempt, stops the run and backs off (twice `ANALYSIS_INTERVAL`, doubling up to 10 minutes, reset when the service answers); a read timeout puts the game back while attempts remain (2), then fails it. An outage of any length no longer fails games
+- Games are claimed for analysis with one conditional update (PENDING -> RUNNING), so two workers can never analyse the same game (#30)
 - Analysis-service CI job ran leftover host steps with an unpinned Ubuntu Stockfish after a merge; it now only builds and tests the image
 - Stray `FROM python:3.15-slim` line at the top of the analysis-service Dockerfile
+
+[Unreleased]: https://github.com/Gergo019/blindspot-chess/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Gergo019/blindspot-chess/releases/tag/v0.1.0

@@ -4,7 +4,7 @@
 
 BlindSpot finds a mistake you keep making in your own games, lets you practise it on the positions where it happened, and then checks whether the lesson carries over to positions you have never seen.
 
-> Status: **Phase 1, pipeline, complete**. Recent Lichess rapid games are imported and analysed in the background (Stockfish evaluations and hanging-piece findings stored in PostgreSQL), and a demo profile loads real games from the Lichess open database. No coaching screens yet.
+> Status: **v0.1.0: Phase 1 complete (import, analysis, hanging-piece detection, demo data). No user interface yet.**
 
 ## The coaching loop
 
@@ -92,7 +92,7 @@ docker compose up --build
 | Service | URL |
 |---|---|
 | Backend | http://localhost:8080/health |
-| Analysis service | http://localhost:8000/health (reports the pinned Stockfish version and depth); `POST /analyze`, see [analysis-service](analysis-service/README.md) |
+| Analysis service | http://localhost:8000/health (reports the pinned Stockfish version, depth, threads and hash size); `POST /analyze`, see [analysis-service](analysis-service/README.md) |
 | PostgreSQL | `localhost:5432` (db/user/password from `.env`) |
 
 **Demo (the default in `.env.example`):** `SPRING_PROFILES_ACTIVE=demo` loads 20 real rapid games from the [Lichess open database](https://database.lichess.org/) (January 2013, CC0) for a fictional player `demo` on the first start. The background analysis then works through them one at a time, in about 3 to 4 minutes. Afterwards the database holds 20 analysed games, with hanging-piece findings in 5 of them (`hanging-0.4`). No Lichess account or token is needed, and the demo profile never calls the Lichess API. To look at the findings:
