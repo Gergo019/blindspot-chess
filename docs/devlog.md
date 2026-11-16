@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-16: Transient analysis-service failures no longer fail games (#30 / PR #38)
+## 2026-11-16: Transient analysis-service failures no longer fail games (#30 / PR #38, #39)
 
 **Goal:** A short outage of the analysis service must not fail games for good. Only a game the service rejects is FAILED at once. The same PR claims games atomically, analyses the newest games first, and makes only template explanations showable. This is the first Phase 1 hardening item from the 2026-11-14 code review (A1, A8, A9), to be done before `v0.1.0`.
 
@@ -70,13 +70,15 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 
 - CI on PR #38, first run green, **2m51s** in all. Backend job 1m32s: 67 unit tests; `AnalysisFailureHandlingIT` 4.7 s, `AnalysisEndToEndIT` 43.1 s, `SchemaIT` 13.3 s, `LichessImportIT` 2.2 s, `DemoDataIT` 2.0 s. Analysis-service job 1m10s; Compose stack 1m15s, now including the wait for the healthcheck.
 
+- **Follow-up PR #39** (unreadable responses retried once): CI green on the first run, **2m56s** in all. Backend job 1m45s: 69 unit tests and 20 integration tests, `AnalysisFailureHandlingIT` 9 tests in 5.5 s. Analysis-service job 1m01s; Compose stack 1m07s.
+
 **Open points / risks:**
 - **Newest first can starve old games** if imports outpaced analysis for a long time. It is bounded today: the importer fetches at most the newest 20 games per account and run, and one game takes seconds.
 - A late store after recovery (a game recovered from RUNNING while its original call is still running) is still unhandled. It needs a read timeout longer than `stuck-after`, which the startup check prevents. Listed in the review backlog (#37).
 - `TIMEOUT` cannot tell a slow game from an overloaded service. If timeouts cluster across games, the read timeout or the number of workers is wrong; the log shows the kind each time.
 - **ADR numbering:** this PR takes ADR 0005, so the knight-fork ADR (#26) will be 0006.
 
-**Links:** [#30](https://github.com/Gergo019/blindspot-chess/issues/30), [PR #38](https://github.com/Gergo019/blindspot-chess/pull/38), [ADR 0005](decisions/0005-failure-handling-in-background-analysis.md), the code review of 2026-11-14 (A1, A8, A9)
+**Links:** [#30](https://github.com/Gergo019/blindspot-chess/issues/30), [PR #38](https://github.com/Gergo019/blindspot-chess/pull/38), [PR #39](https://github.com/Gergo019/blindspot-chess/pull/39) (follow-up: unreadable responses), [ADR 0005](decisions/0005-failure-handling-in-background-analysis.md), the code review of 2026-11-14 (A1, A8, A9)
 
 ## 2026-11-14: Seeded demo data from the Lichess open database (#23 / PR #29)
 
