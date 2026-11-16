@@ -43,6 +43,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 **Verification:**
 - Analysis-service tests in the Docker test image: 145 passed in 37 s, the fuzz tests about 15 s of that.
 - Backend `mvn verify` in Docker: 75 unit tests and 23 integration tests green, including the new rejection test through the rebuilt image.
+- CI on PR #45, first run green, **3m04s** in all. Analysis-service job 1m51s, up from about 1m05s: its 145 tests take 76 s on the runner, against 37 s locally, and the fuzz tests account for most of the increase. Backend job 1m29s: 75 unit tests and 23 integration tests, `AnalysisEndToEndIT` (3 tests) 36.2 s. Compose stack 1m08s.
 
 **Open points / risks:**
 - The fuzz test runs a fixed, derandomized sample (60 examples per strategy) so CI stays reproducible. It is a guard rail, not an exhaustive search.
