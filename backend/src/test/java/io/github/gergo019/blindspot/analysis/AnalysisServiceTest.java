@@ -2,10 +2,11 @@ package io.github.gergo019.blindspot.analysis;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -18,11 +19,13 @@ import java.net.http.HttpTimeoutException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -74,8 +77,8 @@ class AnalysisServiceTest {
             return true;
         });
         when(games.save(any(Game.class))).thenAnswer(call -> call.getArgument(0));
-        when(evaluations.save(any(MoveEvaluation.class))).thenAnswer(call -> call.getArgument(0));
-        when(findings.save(any(MistakeFinding.class))).thenAnswer(call -> call.getArgument(0));
+        when(evaluations.saveAll(anyList())).thenAnswer(call -> call.getArgument(0));
+        when(findings.saveAll(anyList())).thenAnswer(call -> call.getArgument(0));
     }
 
     @Test
@@ -89,19 +92,50 @@ class AnalysisServiceTest {
 
         assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.FAILED);
         assertThat(game.getAnalysisAttempts()).isEqualTo(1);
-        verify(evaluations, never()).save(any());
-        verify(findings, never()).save(any());
+        verify(evaluations, never()).saveAll(anyList());
+        verify(findings, never()).saveAll(anyList());
     }
 
     @Test
-    void unexpectedResponseContentIsMarkedFailedNotLeftRunning() {
-        // A classification the backend does not know: storing fails, the game must not stay RUNNING.
-        server.expect(requestTo(URL))
+    void anUnknownClassificationIsAnInvalidResponseAndNothingIsStored() {
+        // A classification the backend does not know: the game must not stay RUNNING, nor be failed at once.
+        server.expect(org.springframework.test.web.client.ExpectedCount.times(2), requestTo(URL))
                 .andRespond(withSuccess(AnalysisClientTest.RESPONSE.replace("\"BLUNDER\"", "\"SUPERB\""),
                         MediaType.APPLICATION_JSON));
 
-        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.FAILED);
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.INVALID_RESPONSE_RETRY);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
+        verify(evaluations, never()).saveAll(anyList());
+        verify(findings, never()).saveAll(anyList());
+
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.INVALID_RESPONSE_FAILED);
         assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(Game.MAX_ANALYSIS_ATTEMPTS);
+    }
+
+    @Test
+    void anUnknownMotifIsAnInvalidResponseAndNothingIsStored() {
+        server.expect(requestTo(URL))
+                .andRespond(withSuccess(AnalysisClientTest.RESPONSE.replace("\"HANGING_PIECE\"", "\"PAWN_STORM\""),
+                        MediaType.APPLICATION_JSON));
+
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.INVALID_RESPONSE_RETRY);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
+        // The evaluations were fine, but they are not stored without the finding.
+        verify(evaluations, never()).saveAll(anyList());
+    }
+
+    @Test
+    void contentTheDatabaseRejectsIsAnInvalidResponse() {
+        server.expect(requestTo(URL)).andRespond(withSuccess(AnalysisClientTest.RESPONSE, MediaType.APPLICATION_JSON));
+        doThrow(new DataIntegrityViolationException("duplicate key value violates move_evaluations_game_ply_uq"))
+                .when(evaluations).flush();
+
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.INVALID_RESPONSE_RETRY);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
     }
 
     @Test
@@ -151,6 +185,31 @@ class AnalysisServiceTest {
     }
 
     @Test
+    void anUnreadableResponseCountsAsAnAttemptAndTheSecondOneFailsTheGame() {
+        // A 2xx the backend cannot read, e.g. after the service changed its contract.
+        server.expect(org.springframework.test.web.client.ExpectedCount.times(2), requestTo(URL))
+                .andRespond(withSuccess("{\"engine\": [", MediaType.APPLICATION_JSON));
+
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.INVALID_RESPONSE_RETRY);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
+        verify(evaluations, never()).saveAll(anyList());
+
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.INVALID_RESPONSE_FAILED);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(Game.MAX_ANALYSIS_ATTEMPTS);
+    }
+
+    @Test
+    void anEmptyResponseIsHandledLikeAnUnreadableOne() {
+        server.expect(requestTo(URL)).andRespond(withSuccess());
+
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.INVALID_RESPONSE_RETRY);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
+    }
+
+    @Test
     void aGameThatIsNotClaimedIsNotSent() {
         server.expect(org.springframework.test.web.client.ExpectedCount.never(), requestTo(URL));
         when(games.claimForAnalysis(anyLong(), any())).thenReturn(false);
@@ -170,17 +229,22 @@ class AnalysisServiceTest {
 
         verify(games).claimForAnalysis(GAME_ID, STARTED);
         assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.DONE);
-        ArgumentCaptor<MoveEvaluation> stored = ArgumentCaptor.forClass(MoveEvaluation.class);
-        verify(evaluations, times(2)).save(stored.capture());
-        assertThat(stored.getAllValues()).extracting(MoveEvaluation::getPly).containsExactly(3, 4);
-        assertThat(stored.getAllValues().get(0).getEngineRun().version()).isEqualTo("Stockfish 19");
-        assertThat(stored.getAllValues().get(1).getScoreAfter()).isEqualTo(MoveEvaluation.Score.mate(0));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<MoveEvaluation>> storedMoves = ArgumentCaptor.forClass(List.class);
+        verify(evaluations).saveAll(storedMoves.capture());
+        List<MoveEvaluation> stored = storedMoves.getValue();
+        assertThat(stored).extracting(MoveEvaluation::getPly).containsExactly(3, 4);
+        assertThat(stored.get(0).getEngineRun().version()).isEqualTo("Stockfish 19");
+        assertThat(stored.get(1).getScoreAfter()).isEqualTo(MoveEvaluation.Score.mate(0));
 
-        ArgumentCaptor<MistakeFinding> finding = ArgumentCaptor.forClass(MistakeFinding.class);
-        verify(findings).save(finding.capture());
-        assertThat(finding.getValue().getMotif()).isEqualTo(Motif.HANGING_PIECE);
-        assertThat(finding.getValue().getDetectorVersion()).isEqualTo("hanging-0.2");
-        assertThat(finding.getValue().getFacts())
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<MistakeFinding>> storedFindings = ArgumentCaptor.forClass(List.class);
+        verify(findings).saveAll(storedFindings.capture());
+        assertThat(storedFindings.getValue()).hasSize(1);
+        MistakeFinding finding = storedFindings.getValue().get(0);
+        assertThat(finding.getMotif()).isEqualTo(Motif.HANGING_PIECE);
+        assertThat(finding.getDetectorVersion()).isEqualTo("hanging-0.2");
+        assertThat(finding.getFacts())
                 .contains("\"movedPiece\":\"knight\"")
                 .contains("\"materialLost\":3");
     }

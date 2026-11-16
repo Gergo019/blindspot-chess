@@ -34,7 +34,8 @@ import io.github.gergo019.blindspot.game.GameRepository;
  * {@code stuckAfter} goes back to PENDING once and is marked FAILED if it
  * gets stuck again. FAILED games are never picked up again by the job.
  *
- * <p>When the analysis service is unavailable, the run stops at once and the
+ * <p>A response that cannot be read or stored also stops the run (without a
+ * back-off). When the analysis service is unavailable, the run stops at once and the
  * job backs off: {@link #nextDelay()} doubles, from twice the interval up to
  * {@link #MAX_BACKOFF}, and returns to the interval as soon as the service
  * answers again (ADR 0005). {@link AnalysisJobScheduler} runs this at that
@@ -83,11 +84,13 @@ public class AnalysisJob {
      * What one run did.
      *
      * @param analysed games claimed and sent to the analysis service
-     * @param retried games that timed out and went back to PENDING (attempt counted)
+     * @param failed games marked FAILED, including one whose response was invalid on its last attempt
+     * @param retried games that timed out or got an invalid response and went back to PENDING (attempt counted)
      * @param serviceUnavailable whether the run stopped because the service was unavailable
+     * @param invalidResponse whether the run stopped because a response could not be read or stored
      */
     public record RunResult(int recovered, int failedAsStuck, int analysed, int done, int failed, int retried,
-            boolean serviceUnavailable) {
+            boolean serviceUnavailable, boolean invalidResponse) {
     }
 
     /** What stuck-game recovery did. */
@@ -97,7 +100,8 @@ public class AnalysisJob {
     /**
      * One run: recover stuck games, then analyse up to a batch of PENDING
      * games, newest first. Stops at the first game the service was unavailable
-     * for, and adjusts the back-off.
+     * for, or whose response could not be read or stored, and adjusts the
+     * back-off (only unavailability backs off).
      */
     public RunResult runOnce() {
         Recovery recovery = recoverStuckGames();
@@ -109,18 +113,22 @@ public class AnalysisJob {
         List<Outcome> outcomes = analyse(batch);
         int analysed = (int) outcomes.stream().filter(o -> o != Outcome.NOT_CLAIMED).count();
         int done = count(outcomes, Outcome.DONE);
-        int failed = count(outcomes, Outcome.FAILED);
-        int retried = count(outcomes, Outcome.RETRY);
+        int failed = count(outcomes, Outcome.FAILED) + count(outcomes, Outcome.INVALID_RESPONSE_FAILED);
+        int retried = count(outcomes, Outcome.RETRY) + count(outcomes, Outcome.INVALID_RESPONSE_RETRY);
         boolean unavailable = outcomes.contains(Outcome.SERVICE_UNAVAILABLE);
-        adjustBackoff(unavailable, done + failed > 0);
+        boolean invalid = outcomes.contains(Outcome.INVALID_RESPONSE_RETRY)
+                || outcomes.contains(Outcome.INVALID_RESPONSE_FAILED);
+        // An invalid response is still an answer: the service is up.
+        adjustBackoff(unavailable, done + failed > 0 || invalid);
 
         if (!batch.isEmpty() || recovery.backToPending() + recovery.failed() > 0) {
+            String stop = unavailable ? "; analysis service unavailable, next run in " + nextDelay()
+                    : invalid ? "; stopped at a response that cannot be read or stored" : "";
             log.info("Analysis run: {} recovered, {} failed as stuck, {} analysed, {} done, {} failed, {} retried{}",
-                    recovery.backToPending(), recovery.failed(), analysed, done, failed, retried,
-                    unavailable ? "; analysis service unavailable, next run in " + nextDelay() : "");
+                    recovery.backToPending(), recovery.failed(), analysed, done, failed, retried, stop);
         }
         return new RunResult(recovery.backToPending(), recovery.failed(), analysed, done, failed, retried,
-                unavailable);
+                unavailable, invalid);
     }
 
     /**
@@ -179,17 +187,18 @@ public class AnalysisJob {
 
     /**
      * Analyses the games in order, or with several workers at once. Once one
-     * game finds the service unavailable, the remaining games are not started
-     * (games already running on other workers finish).
+     * game stops the run (service unavailable, or a response that cannot be
+     * read or stored), the remaining games are not started (games already
+     * running on other workers finish).
      */
     private List<Outcome> analyse(List<Long> gameIds) {
-        AtomicBoolean serviceDown = new AtomicBoolean();
+        AtomicBoolean stop = new AtomicBoolean();
         if (properties.workers() == 1) {
             List<Outcome> outcomes = new ArrayList<>();
             for (long id : gameIds) {
                 Outcome outcome = analyseOne(id);
                 outcomes.add(outcome);
-                if (outcome == Outcome.SERVICE_UNAVAILABLE) {
+                if (stopsTheRun(outcome)) {
                     break;
                 }
             }
@@ -198,12 +207,12 @@ public class AnalysisJob {
         try (ExecutorService workers = Executors.newFixedThreadPool(properties.workers())) {
             List<Future<Outcome>> results = gameIds.stream()
                     .map(id -> workers.submit(() -> {
-                        if (serviceDown.get()) {
+                        if (stop.get()) {
                             return null;
                         }
                         Outcome outcome = analyseOne(id);
-                        if (outcome == Outcome.SERVICE_UNAVAILABLE) {
-                            serviceDown.set(true);
+                        if (stopsTheRun(outcome)) {
+                            stop.set(true);
                         }
                         return outcome;
                     })).toList();
@@ -231,6 +240,11 @@ public class AnalysisJob {
             log.warn("Game {} skipped: {}", gameId, e.getMessage(), e);
             return Outcome.NOT_CLAIMED;
         }
+    }
+
+    private static boolean stopsTheRun(Outcome outcome) {
+        return outcome == Outcome.SERVICE_UNAVAILABLE || outcome == Outcome.INVALID_RESPONSE_RETRY
+                || outcome == Outcome.INVALID_RESPONSE_FAILED;
     }
 
     private static int count(List<Outcome> outcomes, Outcome outcome) {
