@@ -30,7 +30,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - **Getting started on a fresh clone**, run exactly as written (fresh `git clone` of main at 87295fe into a temp folder, `cp .env.example .env`, `docker compose up --build`, here with `-d`), on an Apple Silicon Mac: images built in about a minute (with the local Docker layer cache; the clone itself was fresh); both `/health` endpoints UP (the analysis service reports Stockfish 19, depth 16, 1 thread, 64 MB). The `demo` profile loaded 20 games as PENDING; all 20 were DONE about 3.5 minutes after they were created (17:43:26 to 17:47:04 UTC), none FAILED.
 - The README's findings query returned 5 `hanging-0.4` findings, as documented: 008j6z3b (White, ply 9, Qe2), 008pkspi (Black, ply 36, Rb6), 00ckuzm1 (Black, ply 66, Rc3+), 00jay4x6 (Black, ply 22, Be7), 00lv6mdm (Black, ply 16, Bh3). The first two are the golden-file games of #33.
 - All 1,238 stored evaluations record 1 thread and 64 MB (V4). No WARN or ERROR lines in the backend log.
-- CI_RESULT
+- CI on PR #48 green on the first run: analysis service 2m20s, backend 1m38s, Compose stack 1m26s.
 
 **Known limits:**
 - Low-severity review items are collected in [#37](https://github.com/Gergo019/blindspot-chess/issues/37): mate handling in the classifier, `engine_version` width, `BaseEntity` clock, the classification formula not re-checked against lila, an N+1 on the future findings screen, per-account Lichess rate limiting, and the 75-move rule.
