@@ -18,5 +18,6 @@ AI-written explanations of chess mistakes can invent moves, pieces or tactics. A
 
 - What players see in v1 is correct by construction; every sentence maps to a validated claim and a playable line.
 - AI text only reaches players if the experiment shows a low, measured rate of unsupported claims, and even then the player falls back to the template whenever a check fails.
+- **Showable means `TEMPLATE` and `PASSED`.** `Explanation.isShowable()` and `ExplanationRepository.findShowable` both require the template mode, so a passed `LLM_FREE` or `LLM_FACTS` text is never player-facing until a new decision record enables a mode (#30).
 - Templates read more mechanically. That is an acceptable price, and the evaluation will show whether players mind.
 - The claim types limit what can be explained. New motifs need new claim types and validators first.

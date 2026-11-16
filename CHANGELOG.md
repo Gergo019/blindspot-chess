@@ -4,10 +4,18 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- Background analysis handles failures by kind ([ADR 0005](docs/decisions/0005-failure-handling-in-background-analysis.md)) (#30): a rejected game (422) or an unreadable response is FAILED at once; an unavailable analysis service (connection refused, host not found, 5xx, other error statuses) puts the game back to PENDING without using an attempt, stops the run and backs off (twice `ANALYSIS_INTERVAL`, doubling up to 10 minutes, reset when the service answers); a read timeout puts the game back while attempts remain (2), then fails it. An outage of any length no longer fails games
+- Games are claimed for analysis with one conditional update (PENDING -> RUNNING), so two workers can never analyse the same game (#30)
+- The analysis job takes the newest PENDING games first, not the oldest (#30)
+- Only `TEMPLATE` explanations that passed verification are showable; a passed LLM text is not (ADR 0003) (#30)
+- Docker Compose starts the backend once the analysis service is healthy (a `/health` check that requires a working engine) (#30)
+
 ### Added
 
 - Demo data (#23): the `demo` Spring profile (`SPRING_PROFILES_ACTIVE=demo`, the default in `.env.example`) loads 20 real rapid games from the Lichess open database (2013-01, CC0) for the fictional user `demo` on first start, through the normal importer, as PENDING games for the background analysis; 7 of them have a hanging-piece finding. It switches the live Lichess import off. The games are selected by `tools/demo-data/select_demo_games.py`, which is deterministic and documents its source, checksum and rules
-- Background analysis of imported games (#22): `AnalysisJob` analyses the oldest PENDING games, a bounded batch per run, `ANALYSIS_WORKERS` at a time (default 1). A game stuck in RUNNING longer than `ANALYSIS_STUCK_AFTER` (default 30 min) goes back to PENDING once, then FAILED; recovery runs at startup and on every run. FAILED games are not retried automatically
+- Background analysis of imported games (#22): `AnalysisJob` analyses PENDING games (oldest first; newest first since #30), a bounded batch per run, `ANALYSIS_WORKERS` at a time (default 1). A game stuck in RUNNING longer than `ANALYSIS_STUCK_AFTER` (default 30 min) goes back to PENDING once, then FAILED; recovery runs at startup and on every run. FAILED games are not retried automatically
 - Flyway `V3`: `analysis_attempts` and `analysis_started_at` on `games`, with check constraints (#22)
 - Lichess import (#5): a background job fetches each Lichess account's newest finished rapid games from the game export API (NDJSON), at most `LICHESS_IMPORT_BATCH_SIZE` per run, and stores them as PENDING; games in progress, other speeds and variants, and games already stored (by Lichess game id) are skipped. Sends an identifying `User-Agent` (`LICHESS_USER_AGENT`) and the optional `LICHESS_API_TOKEN`. `LICHESS_USERNAME` creates the account to import for at startup. Tested against recorded Lichess responses
 - Backend analyses stored games through the analysis service: `AnalysisClient` (RestClient, connect timeout 2 s, configurable read timeout, default 180 s) and `AnalysisService.analyzeGame`, which stores move evaluations and findings with their facts and never leaves a game RUNNING (#4)

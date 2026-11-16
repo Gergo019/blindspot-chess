@@ -34,6 +34,17 @@ class DomainRulesTest {
     }
 
     @Test
+    void onlyTemplateExplanationsAreShowableEvenWhenAnLlmTextPasses() {
+        for (Mode mode : new Mode[] { Mode.LLM_FREE, Mode.LLM_FACTS }) {
+            Explanation llm = Explanation.llm(finding, mode, "model", "v1", FACTS, "Your knight on e5 is loose.");
+            llm.recordVerification(0, null);
+
+            assertThat(llm.getVerificationStatus()).isEqualTo(Explanation.VerificationStatus.PASSED);
+            assertThat(llm.isShowable()).as(mode.name()).isFalse();
+        }
+    }
+
+    @Test
     void anyUnsupportedClaimFailsTheExplanation() {
         Explanation explanation = Explanation.llm(finding, Mode.LLM_FREE, "model", "v1", FACTS,
                 "Nxe5 loses because Black wins the rook on h1.");
@@ -122,5 +133,29 @@ class DomainRulesTest {
     @Test
     void onlyARunningAnalysisCanBeRecovered() {
         assertThatThrownBy(game::recoverStuckAnalysis).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(game::timeOutAnalysis).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(game::releaseAnalysis).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void anUnavailableServiceGivesTheAttemptBack() {
+        for (int outage = 0; outage < 5; outage++) {
+            game.startAnalysis(T0);
+            game.releaseAnalysis();
+        }
+
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isZero();
+    }
+
+    @Test
+    void aTimeoutUsesAnAttemptAndTheLastOneFails() {
+        game.startAnalysis(T0);
+        assertThat(game.timeOutAnalysis()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
+
+        game.startAnalysis(T0.plus(Duration.ofMinutes(1)));
+        assertThat(game.timeOutAnalysis()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(Game.MAX_ANALYSIS_ATTEMPTS);
     }
 }

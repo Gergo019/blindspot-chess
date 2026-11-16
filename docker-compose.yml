@@ -26,6 +26,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      # The analysis job's first run must not meet a service that is still starting (#30).
+      analysis-service:
+        condition: service_healthy
     environment:
       DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-blindspot}
       DB_USERNAME: ${POSTGRES_USER:-blindspot}
@@ -55,6 +58,13 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
     ports:
       - "${ANALYSIS_SERVICE_PORT:-8000}:8000"
+    healthcheck:
+      # The image has Python but no curl. Healthy once /health answers and finds Stockfish.
+      test: ["CMD", "python", "-c", "import json, urllib.request; r = urllib.request.urlopen('http://localhost:8000/health', timeout=3); assert json.load(r)['engine'] == 'UP'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   # frontend:          # Phase 3: React + TypeScript
   #   build: ./frontend

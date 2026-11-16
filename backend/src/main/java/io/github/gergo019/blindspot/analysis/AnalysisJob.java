@@ -3,11 +3,13 @@ package io.github.gergo019.blindspot.analysis;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,18 +20,25 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import io.github.gergo019.blindspot.analysis.AnalysisService.Outcome;
 import io.github.gergo019.blindspot.game.Game;
 import io.github.gergo019.blindspot.game.GameEnums.AnalysisStatus;
 import io.github.gergo019.blindspot.game.GameRepository;
 
 /**
- * Analyses PENDING games in the background: oldest game first, a bounded
- * batch per run, at most {@code workers} at a time (default one).
+ * Analyses PENDING games in the background: newest game first (the pattern
+ * report reads the last 20 games), a bounded batch per run, at most
+ * {@code workers} at a time (default one).
  *
  * <p>Each run first recovers stuck games: a game RUNNING for longer than
  * {@code stuckAfter} goes back to PENDING once and is marked FAILED if it
  * gets stuck again. FAILED games are never picked up again by the job.
- * {@link AnalysisJobScheduler} runs this on a schedule and at startup.
+ *
+ * <p>When the analysis service is unavailable, the run stops at once and the
+ * job backs off: {@link #nextDelay()} doubles, from twice the interval up to
+ * {@link #MAX_BACKOFF}, and returns to the interval as soon as the service
+ * answers again (ADR 0005). {@link AnalysisJobScheduler} runs this at that
+ * pace, and recovers stuck games at startup.
  */
 @Component
 @EnableConfigurationProperties(AnalysisJobProperties.class)
@@ -42,6 +51,12 @@ public class AnalysisJob {
     private final TransactionTemplate tx;
     private final Clock clock;
     private final AnalysisJobProperties properties;
+
+    /** The longest pause between runs while the analysis service is unavailable. */
+    public static final Duration MAX_BACKOFF = Duration.ofMinutes(10);
+
+    /** The current back-off; zero while the service is answering. */
+    private Duration backoff = Duration.ZERO;
 
     public AnalysisJob(GameRepository games, AnalysisService analysisService,
             PlatformTransactionManager transactionManager, Clock clock, AnalysisJobProperties properties,
@@ -64,28 +79,71 @@ public class AnalysisJob {
         this.properties = properties;
     }
 
-    /** What one run did. */
-    public record RunResult(int recovered, int failedAsStuck, int analysed, int done) {
+    /**
+     * What one run did.
+     *
+     * @param analysed games claimed and sent to the analysis service
+     * @param retried games that timed out and went back to PENDING (attempt counted)
+     * @param serviceUnavailable whether the run stopped because the service was unavailable
+     */
+    public record RunResult(int recovered, int failedAsStuck, int analysed, int done, int failed, int retried,
+            boolean serviceUnavailable) {
     }
 
     /** What stuck-game recovery did. */
     public record Recovery(int backToPending, int failed) {
     }
 
-    /** One run: recover stuck games, then analyse up to a batch of PENDING games. */
+    /**
+     * One run: recover stuck games, then analyse up to a batch of PENDING
+     * games, newest first. Stops at the first game the service was unavailable
+     * for, and adjusts the back-off.
+     */
     public RunResult runOnce() {
         Recovery recovery = recoverStuckGames();
         List<Long> batch = tx.execute(status -> games
-                .findByAnalysisStatusOrderByPlayedAtAsc(AnalysisStatus.PENDING,
+                .findByAnalysisStatusOrderByPlayedAtDesc(AnalysisStatus.PENDING,
                         PageRequest.of(0, properties.batchSize()))
                 .stream().map(Game::getId).toList());
 
-        int done = analyse(batch);
+        List<Outcome> outcomes = analyse(batch);
+        int analysed = (int) outcomes.stream().filter(o -> o != Outcome.NOT_CLAIMED).count();
+        int done = count(outcomes, Outcome.DONE);
+        int failed = count(outcomes, Outcome.FAILED);
+        int retried = count(outcomes, Outcome.RETRY);
+        boolean unavailable = outcomes.contains(Outcome.SERVICE_UNAVAILABLE);
+        adjustBackoff(unavailable, done + failed > 0);
+
         if (!batch.isEmpty() || recovery.backToPending() + recovery.failed() > 0) {
-            log.info("Analysis run: {} recovered, {} failed as stuck, {} analysed, {} done", recovery.backToPending(),
-                    recovery.failed(), batch.size(), done);
+            log.info("Analysis run: {} recovered, {} failed as stuck, {} analysed, {} done, {} failed, {} retried{}",
+                    recovery.backToPending(), recovery.failed(), analysed, done, failed, retried,
+                    unavailable ? "; analysis service unavailable, next run in " + nextDelay() : "");
         }
-        return new RunResult(recovery.backToPending(), recovery.failed(), batch.size(), done);
+        return new RunResult(recovery.backToPending(), recovery.failed(), analysed, done, failed, retried,
+                unavailable);
+    }
+
+    /**
+     * The pause before the next run: the configured interval, or the back-off
+     * while the analysis service is unavailable.
+     */
+    public synchronized Duration nextDelay() {
+        return backoff.isZero() ? properties.interval() : backoff;
+    }
+
+    /**
+     * Unavailable: double the back-off (the first one is twice the interval),
+     * capped at {@link #MAX_BACKOFF} but never below the interval. Answered
+     * (a game ended DONE or FAILED, so the service responded): reset. A run
+     * with only timeouts, or with nothing to do, leaves it as it is.
+     */
+    private synchronized void adjustBackoff(boolean unavailable, boolean answered) {
+        if (unavailable) {
+            Duration doubled = (backoff.isZero() ? properties.interval() : backoff).multipliedBy(2);
+            backoff = max(properties.interval(), min(doubled, MAX_BACKOFF));
+        } else if (answered) {
+            backoff = Duration.ZERO;
+        }
     }
 
     /**
@@ -119,19 +177,44 @@ public class AnalysisJob {
         });
     }
 
-    /** @return how many games ended DONE */
-    private int analyse(List<Long> gameIds) {
+    /**
+     * Analyses the games in order, or with several workers at once. Once one
+     * game finds the service unavailable, the remaining games are not started
+     * (games already running on other workers finish).
+     */
+    private List<Outcome> analyse(List<Long> gameIds) {
+        AtomicBoolean serviceDown = new AtomicBoolean();
         if (properties.workers() == 1) {
-            return (int) gameIds.stream().filter(this::analyseOne).count();
+            List<Outcome> outcomes = new ArrayList<>();
+            for (long id : gameIds) {
+                Outcome outcome = analyseOne(id);
+                outcomes.add(outcome);
+                if (outcome == Outcome.SERVICE_UNAVAILABLE) {
+                    break;
+                }
+            }
+            return outcomes;
         }
         try (ExecutorService workers = Executors.newFixedThreadPool(properties.workers())) {
-            List<Future<Boolean>> results = gameIds.stream()
-                    .map(id -> workers.submit(() -> analyseOne(id))).toList();
-            int done = 0;
+            List<Future<Outcome>> results = gameIds.stream()
+                    .map(id -> workers.submit(() -> {
+                        if (serviceDown.get()) {
+                            return null;
+                        }
+                        Outcome outcome = analyseOne(id);
+                        if (outcome == Outcome.SERVICE_UNAVAILABLE) {
+                            serviceDown.set(true);
+                        }
+                        return outcome;
+                    })).toList();
+            List<Outcome> outcomes = new ArrayList<>();
             for (var result : results) {
-                done += result.get() ? 1 : 0;
+                Outcome outcome = result.get();
+                if (outcome != null) {
+                    outcomes.add(outcome);
+                }
             }
-            return done;
+            return outcomes;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while analysing", e);
@@ -140,13 +223,25 @@ public class AnalysisJob {
         }
     }
 
-    private boolean analyseOne(long gameId) {
+    private Outcome analyseOne(long gameId) {
         try {
-            return analysisService.analyzeGame(gameId) == AnalysisStatus.DONE;
+            return analysisService.analyzeGame(gameId);
         } catch (RuntimeException e) {
-            // For example: the game is no longer PENDING because something else started it.
-            log.warn("Game {} skipped: {}", gameId, e.getMessage());
-            return false;
+            // Not a failed analysis (those are outcomes) but an error around it, e.g. the database.
+            log.warn("Game {} skipped: {}", gameId, e.getMessage(), e);
+            return Outcome.NOT_CLAIMED;
         }
+    }
+
+    private static int count(List<Outcome> outcomes, Outcome outcome) {
+        return (int) outcomes.stream().filter(o -> o == outcome).count();
+    }
+
+    private static Duration min(Duration a, Duration b) {
+        return a.compareTo(b) <= 0 ? a : b;
+    }
+
+    private static Duration max(Duration a, Duration b) {
+        return a.compareTo(b) >= 0 ? a : b;
     }
 }
