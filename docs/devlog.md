@@ -4,6 +4,52 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-16: PGN validation, no 500 from /analyze (#32 / PR #45)
+
+**Goal:** Every malformed or impossible game is a 422 with a clear message, and no input can make `POST /analyze` answer 500. Phase 1 hardening item H3 from the 2026-11-14 code review (A6).
+
+**Changes:**
+- `analysis-service/app/pgn.py` rejects with `InvalidGameError` (422):
+  - null moves (`--`);
+  - a start position that is not `is_valid()`;
+  - more than one game in the PGN (trailing plain text is still ignored);
+  - a movetext result that contradicts the `Result` header. A small `GameBuilder` subclass keeps the movetext's termination marker, which python-chess otherwise drops when a header exists;
+  - moves after checkmate, stalemate, insufficient material or the 75-move rule, with "after the game ended by …". Moves after checkmate and stalemate were already illegal for python-chess, but are now named as such.
+- **Fivefold repetition ends the game for analysis:** later moves are dropped, and `ParsedGame.ended_by_fivefold_at` records where.
+- Any other exception while parsing becomes an `InvalidGameError` ("The PGN could not be read").
+- `app/engine.py`: the analysis loop raises `InvalidGameError` instead of reading a missing best move. `app/main.py` maps that to 422 too.
+- Tests:
+  - `test_pgn.py`: one test per case, with the review's examples. These cover null moves (`1. e4 -- 2. d4 -- 3. Nf3 e5 1-0`), a FEN without a white king, two games, `*` against `1-0`, a move after mate, after stalemate and after insufficient material, the fivefold case (knight shuffle, analysed to ply 16), the 75-move rule, and an unexpected parser failure.
+  - `test_engine_guard.py`: the loop never reads a missing best move. It needs no Stockfish.
+  - `test_api.py`: the fivefold and 75-move games through the API.
+  - `test_api_fuzz.py`: Hypothesis, pinned `hypothesis==6.168.5`, released 2026-10-05. It sends random text, every truncation of four real games, huge and unclosed comments up to past the 100,000-character limit, and junk headers, and asserts the status is always 200 or 422. It is derandomized so CI is reproducible, and runs the engine at depth 1, because the property is about errors, not analysis.
+  - Backend `AnalysisEndToEndIT`: a null-move game through the real image ends FAILED after 1 attempt, nothing is stored, and the log has the 422 and "null move".
+- Analysis-service README (the 422 list, fivefold) and CHANGELOG.
+
+**Decisions:**
+- **Fivefold repetition: end of game, not a rejection.** I ran the complete new validation, locally and never in CI, over the 2013-01 open database (`tools/demo-data/cache`):
+
+  | Finished games | Games | Fivefold, game ends there | Fivefold, game continues | 75-move position reached |
+  |---|---|---|---|---|
+  | Rapid, by the demo tool's header rules | 39,080 | 9 | **79** | 0 |
+  | All rated standard | 121,332 | 23 | **213** | 0 |
+
+  Real games continue after a fivefold repetition, so rejecting them would mark 0.2% of real rapid games FAILED. They are analysed up to the fivefold position instead: the game is over by the rules there, and the engine has no best move after it.
+- **The 75-move rule stays a rejection.** No game in the month reaches such a position, so there is no evidence that real games continue past it. If one ever does, the 422 says so plainly.
+- **The whole new validation accepts all 39,080 rapid games;** 79 of them end at the fivefold position. The 26 recorded Lichess and demo games also pass, except the one unfinished game that the importer skips anyway. No real game continues after insufficient material.
+- **Trailing text that is not a game** (for example a note after the result) is ignored, but a second game with its own tags or moves is rejected. Requests should be one game each.
+- **The reason for a 422 is logged, not stored.** ADR 0005 already settled this: the game is FAILED at once and the service's message appears in the backend's WARN log with the game id. No backend change was needed.
+
+**Verification:**
+- Analysis-service tests in the Docker test image: 145 passed in 37 s, the fuzz tests about 15 s of that.
+- Backend `mvn verify` in Docker: 75 unit tests and 23 integration tests green, including the new rejection test through the rebuilt image.
+
+**Open points / risks:**
+- The fuzz test runs a fixed, derandomized sample (60 examples per strategy) so CI stays reproducible. It is a guard rail, not an exhaustive search.
+- A fivefold game's moves after the repetition get no evaluations, so they can never produce a finding. That is correct by the rules, but the stored game has fewer evaluations than half-moves.
+
+**Links:** [#32](https://github.com/Gergo019/blindspot-chess/issues/32), [PR #45](https://github.com/Gergo019/blindspot-chess/pull/45), [ADR 0005](decisions/0005-failure-handling-in-background-analysis.md), the code review of 2026-11-14 (A6)
+
 ## 2026-11-16: Exchange on the square summed over all captures, hanging-0.4 (#31 follow-up / PR #44)
 
 **Goal:** Close the known gap left by PR #43. The exchange on the square stopped at the first recapture, so Nxd5 exd5 Qxd5 (the knight bought two pawns, a net 1) was still reported as a loss of 2.
