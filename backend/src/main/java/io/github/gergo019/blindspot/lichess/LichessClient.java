@@ -69,12 +69,6 @@ public class LichessClient {
     }
 
     private List<LichessGame> parse(String body) {
-        if (body == null || body.isBlank()) {
-            return List.of();
-        }
-        return body.lines()
-                .filter(line -> !line.isBlank())
-                .map(line -> json.readValue(line, LichessGame.class))
-                .toList();
+        return LichessNdjson.parse(body, json);
     }
 }

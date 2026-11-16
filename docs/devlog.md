@@ -4,6 +4,55 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-14: Seeded demo data from the Lichess open database (#23 / PR #29)
+
+**Goal:** A demo that works without live Lichess imports and shows the pipeline on real games: `cp .env.example .env && docker compose up --build` gives a reviewer analysed games with findings, with no Lichess account.
+
+**Changes:**
+- `tools/demo-data/select_demo_games.py`, `requirements.txt` (`chess==1.11.2`), `README.md` (source URL, checksum, CC0, selection rules, exact steps, the result) and `selection-2013-01.json` (the run's report). The downloaded file lives in the git-ignored `tools/demo-data/cache/`.
+- `backend/src/main/resources/demo/games.ndjson`: the 20 selected games in the Lichess export format.
+- `backend/.../demo/DemoDataLoader.java`: with the `demo` profile and no user `demo`, it creates the user and a Lichess account `demo`, then imports the file through `LichessImportService.importGames`. That is the importer's own mapping, skip rules and storing, so the games are PENDING and the normal `AnalysisJob` analyses them. It runs in one transaction, and fails startup if any demo game is not importable.
+- `LichessImportService.importGames(accountId, games)` (public; `importRecentGames` now uses it) and `LichessNdjson.parse` (shared with `LichessClient`).
+- `application-demo.yml`: switches the live Lichess import off.
+- `docker-compose.yml`: `SPRING_PROFILES_ACTIVE` passed to the backend. `.env.example`: `SPRING_PROFILES_ACTIVE=demo` with a comment.
+- `DemoDataIT` (demo profile, PostgreSQL): 20 games for `demo`, PENDING, rapid, no duplicate ids, both colours, opponents are placeholders; loading again adds nothing; the Lichess import job does not exist in the profile.
+- `README.md` (status, Getting started, roadmap), `CHANGELOG.md`.
+- PR #28 entry: clarified that startup recovery uses the stuck timeout (below).
+
+**Decisions:**
+- **Month 2013-01** (`lichess_db_standard_rated_2013-01.pgn.zst`, 17.8 MB, SHA-256 `aa40b367…3fd1635`, matching Lichess's `sha256sums.txt`). It is small, and the earliest months are as real as any. Downloaded once locally; CI never touches the database.
+- **Rapid by time control,** `480 ≤ initial + 40 × increment < 1500` seconds, Lichess's definition. The 2013 `Event` tags only know Bullet, Blitz and Classical, so 5+5 games say "Classical" there. Finished = result 1-0/0-1/½-½ and termination `Normal` or `Time forfeit`. 20 to 300 half-moves.
+- **Deterministic selection:**
+  - candidates sorted by Lichess game id;
+  - the user's colour alternates White/Black along that order;
+  - games analysed in order by our own analysis-service image (depth 16);
+  - the first 7 games with a hanging-piece finding on the user's side, and the first 13 with no finding, taken; the run stops when both quotas are full.
+  
+  Seven, so the pattern threshold (3 distinct games) is met with room to spare; thirteen, so most games show that the detector stays quiet. Rejected: random sampling (not reproducible), and analysing both colours of every game (twice the engine time for no gain).
+- **Anonymisation:** players become `demo` and `opponent_01`…`opponent_20`. The original Lichess game id stays as `id`, and in the `Site` and `GameId` PGN tags, so every game is traceable; `source` names the database month. Ratings, date, time control, opening and termination are kept. Comments and clocks are dropped. Keeping the original id as `id`, rather than a separate field, also makes it the external id that deduplication uses.
+- **No special analysis path:** the loader only stores PENDING games through the importer, and `AnalysisJob` does the rest. Rejected: shipping precomputed evaluations, which would bypass the pipeline the demo is meant to show and would go stale with a new engine or detector version.
+- **The demo profile switches the live import off.** The demo account is a Lichess account named `demo`, and the job must never ask Lichess for that name's games.
+- **`SPRING_PROFILES_ACTIVE=demo` is the default in `.env.example`, not in `docker-compose.yml`.** A fresh clone following the README gets the demo. The CI Compose job, which has no `.env`, keeps the plain profile, and so does anyone who leaves the variable empty.
+
+**Selection run:** 121,332 games in the file; 39,080 passed the header rules; 21 analysed, 7 with a hanging-piece finding and 14 without. 20 selected: 10 games each with `demo` as White and as Black; the findings are 5 as Black, 2 as White. **194 s** for the whole run, 191 s of it engine analysis (3.7 to 14.6 s per game). Per-game table: `tools/demo-data/README.md`.
+
+**Verification:**
+- `mvn verify` in Docker: 44 unit tests and 11 integration tests (`DemoDataIT` 2 new), all green.
+- Full stack with `SPRING_PROFILES_ACTIVE=demo`, built from scratch:
+  - "Demo data: user 'demo' with 20 games"; two analysis runs of 10; all 20 games DONE **247 s** after `docker compose up` (image build included).
+  - The stored findings are exactly the 7 from the selection run, on the same plies (9, 36, 66, 20, 22, 16, 47), all `hanging-0.2`.
+  - A backend restart logged "user 'demo' exists, nothing loaded", and the game count stayed 20.
+- CI on PR #29, first run green, **2m54s** in all. Backend job 1m35s: 44 unit tests; `DemoDataIT` 2.7 s, `LichessImportIT` 2.8 s, `SchemaIT` 14.9 s, `AnalysisEndToEndIT` 53.8 s (includes the analysis image build). Analysis-service job 58s; Compose stack 1m08s.
+
+**Clarification for PR #28 (crash recovery):** startup recovery does not ignore the stuck timeout; it applies the same `stuck-after` rule as every run. The live test in #28 used `ANALYSIS_STUCK_AFTER=30s` (and a 20 s read timeout) and restarted 32 s after the kill, which is why the game was recovered at startup. With the default 30 min, a crashed game is recovered by the first check after 30 minutes.
+
+**Open points / risks:**
+- The demo and the findings depend on the engine and the detector. A Stockfish or detector change can move findings; then rerun the tool and update the file, `DemoDataIT.DEMO_GAMES` and the numbers in its README.
+- Switching a database that holds the demo to live imports would make the import job ask Lichess for the user `demo`. Use a fresh database (`docker compose down -v`) or keep the demo profile.
+- No screen shows the findings yet (#24); the README gives a SQL query.
+
+**Links:** [#23](https://github.com/Gergo019/blindspot-chess/issues/23), [PR #29](https://github.com/Gergo019/blindspot-chess/pull/29), [Lichess open database](https://database.lichess.org/), [tools/demo-data](../tools/demo-data/README.md)
+
 ## 2026-11-13: Background analysis of imported games (#22 / PR #28)
 
 **Goal:** Every imported game gets analysed without anyone triggering it: one game at a time, oldest first, recovering games left RUNNING by a crash, and never retrying failures forever.
@@ -52,6 +101,7 @@ Through the backend in the Compose stack, the same machine gave 6.9 s, 9.2 s and
   - Three games were imported and analysed one after another, oldest first, all DONE.
   - Restarted with batch 6: three more were imported. I killed the backend (`docker kill`) while game 6 was RUNNING, and restarted it 32 s later.
   - At startup: "Game 6 was RUNNING since 16:46:26 (attempt 1); back to PENDING". The run then analysed games 6, 5 and 4 in order, all DONE; game 6 with 2 attempts.
+  - Clarification (added in #23): startup recovery does **not** ignore the stuck timeout. It applies the same `stuck-after` rule as every run. The live test only worked quickly because `ANALYSIS_STUCK_AFTER` was shortened to 30 s and the restart came 32 s after the kill. With the default 30 min, a game left RUNNING by a crash is recovered by the first check after 30 min (at startup or on a run), not straight away at startup.
 - CI on PR #28, first run green, **3m01s** in all (PR #27: 3m09s). Backend job 1m28s: 44 unit tests; `SchemaIT` 13.4 s, `AnalysisEndToEndIT` 54.0 s for both tests, including the analysis image build (was 49.4 s with one test), `LichessImportIT` 2.8 s. Analysis-service job 1m06s; Compose stack 1m28s.
 
 **Open points / risks:**

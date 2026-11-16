@@ -1,0 +1,236 @@
+{
+  "month": "2013-01",
+  "source": "https://database.lichess.org/standard/lichess_db_standard_rated_2013-01.pgn.zst",
+  "pgnSha256": "8963b6a1620a0e9c77e5515a0744ec133e86869487188af047bb0a74400dee37",
+  "engine": {
+    "name": "Stockfish",
+    "version": "19",
+    "depth": 16
+  },
+  "rules": {
+    "headers": "Rated, standard, Result 1-0/0-1/1/2-1/2, Termination Normal or Time forfeit",
+    "rapid": "480 <= initial + 40 x increment < 1500 seconds",
+    "plies": "20 to 300",
+    "order": "by Lichess game id; user colour alternates White/Black by index in that order",
+    "quota": {
+      "withHangingPiece": 7,
+      "withoutAnyFinding": 13
+    }
+  },
+  "counts": {
+    "gamesInFile": 121332,
+    "passedHeaderFilter": 39080,
+    "skippedForLength": 0,
+    "analysed": 21,
+    "analysedWithHangingPiece": 7,
+    "analysedWithoutFinding": 14,
+    "selected": 20
+  },
+  "secondsTotal": 193.6,
+  "secondsAnalysing": 191.0,
+  "analysed": [
+    {
+      "id": "000g38vv",
+      "userColor": "WHITE",
+      "plies": 87,
+      "seconds": 13.8,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "000itdmn",
+      "userColor": "BLACK",
+      "plies": 68,
+      "seconds": 9.0,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "001c7wqq",
+      "userColor": "WHITE",
+      "plies": 65,
+      "seconds": 8.6,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "003sqcak",
+      "userColor": "BLACK",
+      "plies": 70,
+      "seconds": 10.7,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "003zi1ed",
+      "userColor": "WHITE",
+      "plies": 68,
+      "seconds": 8.6,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "004uiuhf",
+      "userColor": "BLACK",
+      "plies": 37,
+      "seconds": 5.1,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "008j6z3b",
+      "userColor": "WHITE",
+      "plies": 42,
+      "seconds": 8.7,
+      "hangingPiecePlies": [
+        9
+      ],
+      "findings": 1,
+      "selected": true
+    },
+    {
+      "id": "008pkspi",
+      "userColor": "BLACK",
+      "plies": 39,
+      "seconds": 6.0,
+      "hangingPiecePlies": [
+        36
+      ],
+      "findings": 1,
+      "selected": true
+    },
+    {
+      "id": "00a4p9xz",
+      "userColor": "WHITE",
+      "plies": 71,
+      "seconds": 9.6,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "00ckuzm1",
+      "userColor": "BLACK",
+      "plies": 86,
+      "seconds": 11.5,
+      "hangingPiecePlies": [
+        66
+      ],
+      "findings": 1,
+      "selected": true
+    },
+    {
+      "id": "00ebzncu",
+      "userColor": "WHITE",
+      "plies": 76,
+      "seconds": 10.0,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "00edbvy9",
+      "userColor": "BLACK",
+      "plies": 53,
+      "seconds": 5.7,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "00gou273",
+      "userColor": "WHITE",
+      "plies": 96,
+      "seconds": 11.7,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "00h98l4i",
+      "userColor": "BLACK",
+      "plies": 35,
+      "seconds": 4.6,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "00hex9t4",
+      "userColor": "WHITE",
+      "plies": 89,
+      "seconds": 13.6,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "00hjmrjd",
+      "userColor": "BLACK",
+      "plies": 26,
+      "seconds": 3.7,
+      "hangingPiecePlies": [
+        20
+      ],
+      "findings": 1,
+      "selected": true
+    },
+    {
+      "id": "00hueiqw",
+      "userColor": "WHITE",
+      "plies": 37,
+      "seconds": 6.4,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": true
+    },
+    {
+      "id": "00jay4x6",
+      "userColor": "BLACK",
+      "plies": 63,
+      "seconds": 9.3,
+      "hangingPiecePlies": [
+        22
+      ],
+      "findings": 1,
+      "selected": true
+    },
+    {
+      "id": "00jemqaa",
+      "userColor": "WHITE",
+      "plies": 81,
+      "seconds": 11.8,
+      "hangingPiecePlies": [],
+      "findings": 0,
+      "selected": false
+    },
+    {
+      "id": "00lv6mdm",
+      "userColor": "BLACK",
+      "plies": 63,
+      "seconds": 14.6,
+      "hangingPiecePlies": [
+        16
+      ],
+      "findings": 1,
+      "selected": true
+    },
+    {
+      "id": "00mq9lvs",
+      "userColor": "WHITE",
+      "plies": 67,
+      "seconds": 8.0,
+      "hangingPiecePlies": [
+        47
+      ],
+      "findings": 1,
+      "selected": true
+    }
+  ]
+}

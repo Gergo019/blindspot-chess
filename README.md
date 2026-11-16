@@ -4,7 +4,7 @@
 
 BlindSpot finds a mistake you keep making in your own games, lets you practise it on the positions where it happened, and then checks whether the lesson carries over to positions you have never seen.
 
-> Status: **Phase 1, pipeline**. Recent Lichess rapid games are imported and analysed in the background (Stockfish evaluations and hanging-piece findings stored in PostgreSQL); seeded demo data (#23) is still open. No coaching screens yet.
+> Status: **Phase 1, pipeline, complete**. Recent Lichess rapid games are imported and analysed in the background (Stockfish evaluations and hanging-piece findings stored in PostgreSQL), and a demo profile loads real games from the Lichess open database. No coaching screens yet.
 
 ## The coaching loop
 
@@ -95,7 +95,18 @@ docker compose up --build
 | Analysis service | http://localhost:8000/health (reports the pinned Stockfish version and depth); `POST /analyze`, see [analysis-service](analysis-service/README.md) |
 | PostgreSQL | `localhost:5432` (db/user/password from `.env`) |
 
-To import your own games, set `LICHESS_USERNAME` in `.env` before starting: about 10 seconds after startup the backend fetches your newest finished rapid games from Lichess and stores them, then repeats every hour. The analysis job then analyses them one at a time; a rapid game takes 5 to 10 seconds. No token is needed for public games; `LICHESS_API_TOKEN` only raises the rate limit.
+**Demo (the default in `.env.example`):** `SPRING_PROFILES_ACTIVE=demo` loads 20 real rapid games from the [Lichess open database](https://database.lichess.org/) (January 2013, CC0) for a fictional player `demo` on the first start. The background analysis then works through them one at a time, in about 3 to 4 minutes. Afterwards the database holds 20 analysed games, with hanging-piece findings in 7 of them. No Lichess account or token is needed, and the demo profile never calls the Lichess API. To look at the findings:
+
+```bash
+docker compose exec db psql -U blindspot -d blindspot -c \
+  "select g.external_id, g.user_color, me.ply, me.move_san, mf.evidence_line_uci
+   from mistake_findings mf join move_evaluations me on me.id = mf.move_evaluation_id
+   join games g on g.id = me.game_id order by g.external_id"
+```
+
+The demo is loaded only if the user `demo` does not exist yet; `docker compose down -v` starts over. How the games were chosen: [tools/demo-data](tools/demo-data/README.md).
+
+**Your own games:** set `SPRING_PROFILES_ACTIVE=` (empty) and `LICHESS_USERNAME` in `.env` before starting: about 10 seconds after startup the backend fetches your newest finished rapid games from Lichess and stores them, then repeats every hour. The analysis job then analyses them one at a time; a rapid game takes 5 to 10 seconds. No token is needed for public games; `LICHESS_API_TOKEN` only raises the rate limit.
 
 Run only the database in Docker and the backend from your IDE:
 
@@ -128,7 +139,7 @@ users ──< chess_accounts ──< games ──< move_evaluations ──< mist
 
 ## Roadmap
 
-- [ ] **Phase 1, pipeline**: background import of recent completed Lichess rapid games (bounded, deduplicated by game id) ✓, `POST /analyze` with pinned Stockfish ✓, background analysis of imported games ✓, seeded demo data from the open database (#23). **Done when** CI sends one known finished game through backend → analysis service → Stockfish and asserts the expected motif comes back with a replayable line.
+- [ ] **Phase 1, pipeline**: background import of recent completed Lichess rapid games (bounded, deduplicated by game id) ✓, `POST /analyze` with pinned Stockfish ✓, background analysis of imported games ✓, seeded demo data from the open database ✓. **Done when** CI sends one known finished game through backend → analysis service → Stockfish and asserts the expected motif comes back with a replayable line.
 - [ ] **Phase 2, findings**: detectors for the two motifs with evidence lines, the pattern report and its evidence threshold
 - [ ] **Phase 3, practice**: board-first React screen, own-game and transfer drills, Playwright tests
 - [ ] **Phase 4, explanations**: typed claims and templates, then the `LLM_FREE` / `LLM_FACTS` experiment and its evaluation report

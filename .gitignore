@@ -35,3 +35,6 @@ eval-results/
 
 # Local AI-assistant configuration (kept out of the public repo)
 CLAUDE.md
+
+# Demo-data tool: downloaded Lichess database files
+tools/demo-data/cache/
