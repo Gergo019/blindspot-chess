@@ -16,6 +16,7 @@ These shape design and tests more than any Git convention:
 - **Never commit or push directly to `main`.** Every change goes through a branch and a pull request, however small.
 - `main` must always build and pass CI. Protect it in GitHub (Settings > Branches): require a PR and green checks, block force pushes.
 - **One short-lived branch per change**, from an up-to-date `main`: `<type>/<short-description>`, optionally with an issue number (`feat/12-lichess-import`). Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`.
+- **Pull requests start as drafts.** A PR is opened as a draft and marked "Ready for review" only together with the final report on it (CI green, nothing pending). Never merge a draft, and never merge while follow-up commits are still being pushed.
 - **Focused PRs, squash-merged** once CI is green. The PR title becomes the commit on `main`. Delete the branch after merging.
 - **Issues for work worth tracking.** A project board and milestones are optional for solo work.
 - **Decision records** in `docs/decisions/` for choices you will want to explain later (context, decision, consequences, half a page).

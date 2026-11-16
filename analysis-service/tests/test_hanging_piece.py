@@ -52,7 +52,7 @@ class TestFires:
         # The window is 4 plies from the position before the move: Nd4 and three PV plies. The evidence
         # line is the PV part.
         assert finding.evidence_line_uci == "e5d4 d2d3 g8f6"
-        assert finding.detector_version == DETECTOR_VERSION == "hanging-0.3"
+        assert finding.detector_version == DETECTOR_VERSION == "hanging-0.4"
         assert finding.motif == "HANGING_PIECE"
         # The moved piece is the one that is lost.
         assert (finding.moved_piece, finding.moved_from, finding.moved_to) == ("knight", "f3", "d4")
@@ -300,7 +300,8 @@ class TestExchangeOnTheSquare:
         assert (finding.piece, finding.square, finding.captured_by) == ("knight", "d5", "pawn")
         assert finding.material_lost == 2
         assert (finding.moved_piece, finding.moved_from, finding.moved_to) == ("knight", "c3", "d5")
-        assert finding.evidence_line_uci == "e6d5"
+        # The evidence is the played window: the recapture and the quiet moves after it.
+        assert finding.evidence_line_uci == "e6d5 e1e2 e8e7"
 
     def test_an_even_trade_on_the_square_does_not_fire_even_if_material_is_lost_later(self):
         # Demo game 00hjmrjd, ply 20, Black: Nxd5 exd5 trades knight for bishop (0). The material Black
@@ -310,6 +311,26 @@ class TestExchangeOnTheSquare:
         played = "e4d5 c6e7 a4c5 d7d6 c5b3 c8g4 f1e1 f7f5"
         best = "d8e7 d5c6 d7c6 a4c5 e7c5 a2a3 c8g4 c1e3"
         assert run(fen, "f6d5", MISTAKE, played, best=best) is None
+
+    def test_a_retake_on_the_square_counts(self):
+        # Nxd5 exd5 Qxd5: the knight bought two pawns. Net 1 from White's side: no finding. (hanging-0.3
+        # stopped at the recapture and reported 2.)
+        fen = "4k3/8/4p3/3p4/8/2N5/8/3QK3 w - - 0 1"
+        assert run(fen, "c3d5", MISTAKE, "e6d5 d1d5 e8e7 e1e2", best="e1e2 e8e7 e2e3 e7d6") is None
+
+    def test_a_longer_exchange_on_one_square_is_summed(self):
+        # Nxd5 exd5 Rxd5 Rxd5: White gives knight and rook for two pawns. +1 -3 +1 -5: net loss 6.
+        fen = "3rk3/8/4p3/3p4/8/2N5/8/3RK3 w - - 0 1"
+        finding = run(fen, "c3d5", MISTAKE, "e6d5 d1d5 d8d5 e1e2", best="e1e2 e8e7 e2e3 e7d6")
+        assert finding is not None
+        assert (finding.piece, finding.square, finding.captured_by) == ("knight", "d5", "pawn")
+        assert finding.material_lost == 6
+        assert finding.evidence_line_uci == "e6d5 d1d5 d8d5 e1e2"
+
+    def test_an_exchange_still_going_at_the_end_of_the_line_is_not_judged(self):
+        # The line stops right after Rxd5: whether Black can retake again is unknown. No finding.
+        fen = "3rk3/8/4p3/3p4/8/2N5/8/3RK3 w - - 0 1"
+        assert run(fen, "c3d5", MISTAKE, "e6d5 d1d5", best="e1e2 e8e7 e2e3 e7d6") is None
 
     def test_losing_the_exchange_on_the_square_fires(self):
         # Rxe5 dxe5: rook for knight, 5 - 3 = 2.

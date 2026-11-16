@@ -4,6 +4,40 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-16: Exchange on the square summed over all captures, hanging-0.4 (#31 follow-up / PR #44)
+
+**Goal:** Close the known gap left by PR #43. The exchange on the square stopped at the first recapture, so Nxd5 exd5 Qxd5 (the knight bought two pawns, a net 1) was still reported as a loss of 2.
+
+**Changes:**
+- `hanging_piece.py`: when M is a capture and the opponent's first PV move recaptures on M's square, every capture on that square inside the played window is summed from the user's side. The window is rule 3's window, computed from the played line alone, because the best line plays no part in this case. The finding needs a net loss of at least 2. The loss is that net loss, and the evidence line is the played window. A window that ends unfinished or in mate gives no finding. Version `hanging-0.4`.
+- Tests:
+  - Nxd5 exd5 Qxd5 with pawns on d5 (net 1): no finding.
+  - Nxd5 exd5 with no retake: knight, loss 2.
+  - Nxd5 exd5 Rxd5 Rxd5: net loss 6.
+  - A line that stops right after a retake on the square: not judged.
+  - The existing exchange cases still pass, and `hanging-0.4` is expected in `test_api.py`, `test_findings_engine.py` and `AnalysisEndToEndIT`.
+- ADR 0004: rule 2 text, version table (`hanging-0.4`), and the known-gap note on the first recapture removed. Analysis-service README, README, demo notes, CHANGELOG.
+- `CONTRIBUTING.md` (Workflow): pull requests are opened as drafts and marked "Ready for review" only with the final report. This PR is the first one opened that way.
+- Backlog issue #37: re-detect findings when the detector version changes.
+
+**Decisions:**
+- **A new version, not a change to 0.3.** `hanging-0.3` is on main (PRs #42 and #43), and a stored finding must say which rules produced it.
+- **The window comes from the played line alone** in this case. The best line would only make the window longer without adding anything to the exchange on the square.
+- **An exchange still going at the end of the window is not judged,** the same rule as elsewhere.
+
+**Demo check:** all 20 demo games through `POST /analyze` of the new image. **The table is unchanged:** `008j6z3b` (knight d4, 2), `008pkspi` (rook b6, 4), `00ckuzm1` (rook c3, 6), `00jay4x6` (bishop b7, 5) and `00lv6mdm` (bishop h3, 3), now with `hanging-0.4`. No other game has a finding. None of the 20 games has a capture that is recaptured on its square with a net loss of 2 or more. The README example (the Nd4 game) is unchanged apart from the version.
+
+**Verification:**
+- Analysis-service tests in the Docker test image: 115 passed.
+- Backend `mvn verify` in Docker: 75 unit tests and 22 integration tests green, including `AnalysisEndToEndIT` through the rebuilt analysis image (`hanging-0.4`).
+- CI on PR #44, first run green, **3m01s** in all. Analysis-service job 1m05s (115 tests in the image). Backend job 1m50s: 75 unit tests and 22 integration tests, `AnalysisEndToEndIT` 54.1 s. Compose stack 1m07s.
+
+**Open points / risks:**
+- Material lost elsewhere in a line that starts with a recaptured capture is still not attributed (known gap, ADR 0004).
+- Stored findings keep their `detectorVersion` until the games are analysed again (#37).
+
+**Links:** [#31](https://github.com/Gergo019/blindspot-chess/issues/31), [PR #44](https://github.com/Gergo019/blindspot-chess/pull/44), [ADR 0004](decisions/0004-hanging-piece-detector.md), [#37](https://github.com/Gergo019/blindspot-chess/issues/37)
+
 ## 2026-11-16: Hanging-piece loss measured against the engine's best line (#31 / PR #42, #43)
 
 **Goal:** `hanging-0.3`. Measure what a move cost compared with the engine's choice, never judge a line in the middle of an exchange, and run the window through checks. Phase 1 hardening item H2 from the 2026-11-14 code review (A2, A7, the window part of A4).

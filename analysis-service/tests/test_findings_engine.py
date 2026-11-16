@@ -34,7 +34,7 @@ def test_knight_moved_into_a_pawn_capture(analyze_full):
     finding = result.findings[0]
     assert finding.ply == HANGS_KNIGHT_PLY
     assert finding.motif == "HANGING_PIECE"
-    assert finding.detector_version == "hanging-0.3"
+    assert finding.detector_version == "hanging-0.4"
     assert (finding.facts.piece, finding.facts.square, finding.facts.captured_by) == ("knight", "d4", "pawn")
     assert finding.facts.material_lost >= 2
     assert (finding.facts.moved_piece, finding.facts.moved_from, finding.facts.moved_to) == ("knight", "f3", "d4")

@@ -1,4 +1,4 @@
-"""Hanging-piece detector v0.3. Pure: no engine calls.
+"""Hanging-piece detector v0.4. Pure: no engine calls.
 
 A HANGING_PIECE finding is reported for a user move M when all of these hold
 (ADR 0004):
@@ -10,12 +10,14 @@ A HANGING_PIECE finding is reported for a user move M when all of these hold
    rook or queen. Pawns are out of scope.
 
    Exchange on the square: if M is a capture and that first PV move
-   recaptures on M's square, only that exchange is judged. The finding
-   fires if the value of the user's piece on the square minus the value of
-   the piece M captured is at least 2 (a knight taking a defended pawn: 2),
-   with that difference as the loss and the evidence line the recapture.
-   Rules 3 and 4 do not apply; material lost later elsewhere in the line is
-   not attributed (a documented known miss).
+   recaptures on M's square, only the exchange on that square is judged:
+   every capture on it inside the played window (rule 3's window, from the
+   played line alone), summed from the user's side. The finding fires if
+   the user's net loss on the square is at least 2 (a knight taking a
+   defended pawn: 2; Nxd5 exd5 Qxd5 with pawns on d5: 1, no finding), with
+   that net loss as the loss. A window that ends unfinished or in mate gives
+   no finding. Rules 3 and 4 do not apply; material lost elsewhere in the
+   line is not attributed (a documented known miss).
 3. Net material loss of at least 2 points (P=1, N=B=3, R=5, Q=9, from the
    user's side), measured against the engine's best line. Two lines start
    from the position before M: the best line (the engine's best move and
@@ -45,7 +47,7 @@ import chess
 from app.classify import Classification
 from app.models import Score
 
-DETECTOR_VERSION = "hanging-0.3"
+DETECTOR_VERSION = "hanging-0.4"
 MOTIF = "HANGING_PIECE"
 BASE_WINDOW_PLIES = 4
 MAX_WINDOW_PLIES = 8
@@ -150,24 +152,45 @@ def _cut(start: chess.Board, line: list[chess.Move], replayed, length: int) -> _
     return _Window(end, tuple(line[:length]), unfinished, mated)
 
 
+def _captured_value(board: chess.Board, move: chess.Move) -> int:
+    if board.is_en_passant(move):
+        return PIECE_VALUES[chess.PAWN]
+    return PIECE_VALUES[board.piece_type_at(move.to_square)]
+
+
 def _exchange_on_the_square(
     board: chess.Board,
     move: chess.Move,
-    recapture: chess.Move,
+    principal_variation: list[chess.Move] | tuple[chess.Move, ...],
     lost: chess.Piece,
     capturer: chess.Piece,
     moved: chess.Piece,
 ) -> HangingPieceFinding | None:
-    """M captured and the opponent recaptures on the same square: judge only that exchange.
+    """M captured and the opponent recaptures on the same square: judge only the exchange on that square.
 
-    ``lost`` is the user's piece on the square after M (the moved piece, or what a pawn promoted to).
+    Every capture on M's square inside the played window counts, from the user's side: what the user
+    takes is a gain, what the opponent takes a loss. ``lost`` is the user's piece on the square after M
+    (the moved piece, or what a pawn promoted to).
     """
-    taken = chess.PAWN if board.is_en_passant(move) else board.piece_type_at(move.to_square)
-    material_lost = PIECE_VALUES[lost.piece_type] - PIECE_VALUES[taken]
+    user = board.turn
+    played = [move, *principal_variation]
+    plies = _replay(board, played, "Played-line")
+    window = _cut(board, played, plies, _window_length(plies))
+    if window.mated or window.unfinished:
+        return None
+
+    line = board.copy(stack=False)
+    net = 0
+    for ply in window.plies:
+        if line.is_capture(ply) and ply.to_square == move.to_square:
+            value = _captured_value(line, ply)
+            net += value if line.turn == user else -value
+        line.push(ply)
+    material_lost = -net
     if material_lost < MIN_MATERIAL_LOSS:
         return None
     return HangingPieceFinding(
-        evidence_line=(recapture,),
+        evidence_line=window.plies[1:],
         piece=chess.piece_name(lost.piece_type),
         square=chess.square_name(move.to_square),
         captured_by=chess.piece_name(capturer.piece_type),
@@ -220,7 +243,7 @@ def detect(
         return None
     capturer = after.piece_at(first.from_square)
     if board.is_capture(move) and first.to_square == move.to_square:
-        return _exchange_on_the_square(board, move, first, target, capturer, moved)
+        return _exchange_on_the_square(board, move, principal_variation, target, capturer, moved)
 
     played = [move, *principal_variation]
     best = list(best_line)
