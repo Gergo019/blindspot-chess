@@ -213,6 +213,27 @@ class AnalysisFailureHandlingIT {
     }
 
     @Test
+    void anUnreadableResponseIsRetriedOnceThenFails() {
+        Game game = pending("unreadable", Instant.parse("2026-11-01T10:00:00Z"));
+        stub.answerWith(StubAnalysisService.Mode.UNREADABLE_200);
+
+        AnalysisJob.RunResult first = job.runOnce();
+
+        assertThat(first.retried()).isEqualTo(1);
+        Game afterFirst = reload(game).get(0);
+        assertThat(afterFirst.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(afterFirst.getAnalysisAttempts()).isEqualTo(1);
+
+        AnalysisJob.RunResult second = job.runOnce();
+
+        assertThat(second.failed()).isEqualTo(1);
+        Game afterSecond = reload(game).get(0);
+        assertThat(afterSecond.getAnalysisStatus()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(afterSecond.getAnalysisAttempts()).isEqualTo(Game.MAX_ANALYSIS_ATTEMPTS);
+        assertThat(jdbc.queryForObject("select count(*) from move_evaluations", Integer.class)).isZero();
+    }
+
+    @Test
     void aRejectedGameEndsFailedAtOnce() {
         Game bad = pending("bad", Instant.parse("2026-11-01T10:00:00Z"));
         stub.answerWith(StubAnalysisService.Mode.REJECTED_422);
@@ -332,7 +353,7 @@ class AnalysisFailureHandlingIT {
      */
     static final class StubAnalysisService {
 
-        enum Mode { OK, UNAVAILABLE_503, REJECTED_422, SLOW }
+        enum Mode { OK, UNAVAILABLE_503, REJECTED_422, SLOW, UNREADABLE_200 }
 
         final int port = freePort();
         final List<String> requests = Collections.synchronizedList(new ArrayList<>());
@@ -374,12 +395,16 @@ class AnalysisFailureHandlingIT {
                         }
                     }
                     int status = switch (current) {
-                        case OK -> 200;
+                        case OK, UNREADABLE_200 -> 200;
                         case UNAVAILABLE_503, SLOW -> 503;
                         case REJECTED_422 -> 422;
                     };
-                    byte[] body = (current == Mode.OK ? AnalysisClientTest.RESPONSE
-                            : "{\"detail\":\"stub " + current + "\"}").getBytes(StandardCharsets.UTF_8);
+                    String text = switch (current) {
+                        case OK -> AnalysisClientTest.RESPONSE;
+                        case UNREADABLE_200 -> "{\"engine\": [";
+                        default -> "{\"detail\":\"stub " + current + "\"}";
+                    };
+                    byte[] body = text.getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().add("Content-Type", "application/json");
                     try {
                         exchange.sendResponseHeaders(status, body.length);

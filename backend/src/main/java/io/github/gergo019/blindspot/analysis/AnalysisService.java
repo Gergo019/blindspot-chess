@@ -34,9 +34,10 @@ import tools.jackson.databind.json.JsonMapper;
  * DONE. A failed call is handled by its kind (ADR 0005), and a game is never
  * left RUNNING:
  * <ul>
- * <li>rejected (422) or an unreadable response: FAILED at once;</li>
+ * <li>rejected (422): FAILED at once;</li>
  * <li>service unavailable: back to PENDING, the attempt given back;</li>
- * <li>read timeout: back to PENDING while attempts remain, then FAILED.</li>
+ * <li>read timeout or an unreadable response: back to PENDING while
+ * attempts remain, then FAILED.</li>
  * </ul>
  */
 @Service
@@ -48,9 +49,12 @@ public class AnalysisService {
     public enum Outcome {
         /** Analysed and stored; the game is DONE. */
         DONE,
-        /** The game is FAILED: rejected by the service, an unusable response, or timed out on its last attempt. */
+        /**
+         * The game is FAILED: rejected by the service, a response that could not be stored, or a timeout or
+         * unreadable response on its last attempt.
+         */
         FAILED,
-        /** Timed out with attempts left; the game is PENDING again and the attempt counted. */
+        /** Timed out or got an unreadable response with attempts left; PENDING again, the attempt counted. */
         RETRY,
         /** The service was unavailable; the game is PENDING again and the attempt did not count. */
         SERVICE_UNAVAILABLE,
@@ -102,9 +106,9 @@ public class AnalysisService {
             response = client.analyze(request);
         } catch (AnalysisFailedException e) {
             return switch (e.getKind()) {
-                case REJECTED, INVALID_RESPONSE -> fail(gameId, e);
+                case REJECTED -> fail(gameId, e);
                 case UNAVAILABLE -> release(gameId, e);
-                case TIMEOUT -> timeOut(gameId, e);
+                case TIMEOUT, INVALID_RESPONSE -> retryOrFail(gameId, e);
             };
         } catch (RuntimeException e) {
             return fail(gameId, e);
@@ -172,16 +176,23 @@ public class AnalysisService {
         return Outcome.SERVICE_UNAVAILABLE;
     }
 
-    private Outcome timeOut(long gameId, AnalysisFailedException cause) {
-        AnalysisStatus next = updateIfRunning(gameId, Game::timeOutAnalysis);
-        if (next == AnalysisStatus.PENDING) {
-            log.warn("Analysis of game {} timed out (TIMEOUT); back to PENDING, attempt counted: {}", gameId,
-                    cause.getMessage());
-            return Outcome.RETRY;
+    /**
+     * A timeout or an unreadable response: retried once, then FAILED. An
+     * unreadable 2xx body most likely means the backend and the service
+     * disagree on the contract, which needs a person, so it is logged at
+     * ERROR; failing at once would fail every game of the run.
+     */
+    private Outcome retryOrFail(long gameId, AnalysisFailedException cause) {
+        AnalysisStatus next = updateIfRunning(gameId, Game::retryOrFailAnalysis);
+        boolean retry = next == AnalysisStatus.PENDING;
+        String what = retry ? "back to PENDING, attempt counted" : "marked FAILED after its last attempt";
+        if (cause.getKind() == AnalysisFailedException.Kind.INVALID_RESPONSE) {
+            log.error("Analysis of game {} got an unreadable response (INVALID_RESPONSE), likely a contract "
+                    + "mismatch with the analysis service; {}: {}", gameId, what, cause.getMessage(), cause);
+        } else {
+            log.warn("Analysis of game {} timed out ({}); {}: {}", gameId, cause.getKind(), what, cause.getMessage());
         }
-        log.warn("Analysis of game {} timed out (TIMEOUT) on its last attempt; marked FAILED: {}", gameId,
-                cause.getMessage());
-        return Outcome.FAILED;
+        return retry ? Outcome.RETRY : Outcome.FAILED;
     }
 
     /**

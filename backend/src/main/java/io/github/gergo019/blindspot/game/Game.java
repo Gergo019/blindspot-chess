@@ -102,11 +102,11 @@ public class Game extends BaseEntity {
 
     // --- analysis lifecycle: PENDING -> RUNNING -> DONE | FAILED, FAILED -> RUNNING (manual retry),
     // --- RUNNING -> PENDING when the analysis service is unavailable (the attempt is given back),
-    // --- RUNNING (timed out or stuck) -> PENDING while attempts remain, then FAILED
+    // --- RUNNING (timed out, unreadable response, or stuck) -> PENDING while attempts remain, then FAILED
 
     /**
-     * Attempts a game may use before a timed-out or stuck analysis marks it
-     * FAILED: the first such attempt goes back to PENDING, the second one
+     * Attempts a game may use before a timed-out, unreadable or stuck
+     * analysis marks it FAILED: the first such attempt goes back to PENDING, the second one
      * fails.
      */
     public static final int MAX_ANALYSIS_ATTEMPTS = 2;
@@ -145,13 +145,14 @@ public class Game extends BaseEntity {
     }
 
     /**
-     * The analysis service did not answer in time. That may be the game's
-     * fault (a pathological game), so the attempt counts: back to PENDING if
-     * the game has attempts left, otherwise FAILED.
+     * The attempt failed in a way that may be the game's fault and may not
+     * repeat: the service did not answer in time, or answered with a body
+     * the backend cannot read. The attempt counts: back to PENDING if the game
+     * has attempts left, otherwise FAILED.
      *
      * @return the new status
      */
-    public AnalysisStatus timeOutAnalysis() {
+    public AnalysisStatus retryOrFailAnalysis() {
         return retryOrFail();
     }
 

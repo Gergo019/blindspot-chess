@@ -151,6 +151,31 @@ class AnalysisServiceTest {
     }
 
     @Test
+    void anUnreadableResponseCountsAsAnAttemptAndTheSecondOneFailsTheGame() {
+        // A 2xx the backend cannot read, e.g. after the service changed its contract.
+        server.expect(org.springframework.test.web.client.ExpectedCount.times(2), requestTo(URL))
+                .andRespond(withSuccess("{\"engine\": [", MediaType.APPLICATION_JSON));
+
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.RETRY);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
+        verify(evaluations, never()).save(any());
+
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.FAILED);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(Game.MAX_ANALYSIS_ATTEMPTS);
+    }
+
+    @Test
+    void anEmptyResponseIsHandledLikeAnUnreadableOne() {
+        server.expect(requestTo(URL)).andRespond(withSuccess());
+
+        assertThat(service.analyzeGame(GAME_ID)).isEqualTo(Outcome.RETRY);
+        assertThat(game.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(game.getAnalysisAttempts()).isEqualTo(1);
+    }
+
+    @Test
     void aGameThatIsNotClaimedIsNotSent() {
         server.expect(org.springframework.test.web.client.ExpectedCount.never(), requestTo(URL));
         when(games.claimForAnalysis(anyLong(), any())).thenReturn(false);
