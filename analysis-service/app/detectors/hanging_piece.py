@@ -7,9 +7,15 @@ A HANGING_PIECE finding is reported for a user move M when all of these hold
    approves of.
 2. The engine's principal variation (PV) from the position after M starts
    with the opponent capturing one of the user's pieces: a knight, bishop,
-   rook or queen. Pawns are out of scope. If M itself is a capture, that
-   first PV move must not recapture on M's square: an exchange the user
-   started is not a hung piece.
+   rook or queen. Pawns are out of scope.
+
+   Exchange on the square: if M is a capture and that first PV move
+   recaptures on M's square, only that exchange is judged. The finding
+   fires if the value of the user's piece on the square minus the value of
+   the piece M captured is at least 2 (a knight taking a defended pawn: 2),
+   with that difference as the loss and the evidence line the recapture.
+   Rules 3 and 4 do not apply; material lost later elsewhere in the line is
+   not attributed (a documented known miss).
 3. Net material loss of at least 2 points (P=1, N=B=3, R=5, Q=9, from the
    user's side), measured against the engine's best line. Two lines start
    from the position before M: the best line (the engine's best move and
@@ -144,6 +150,34 @@ def _cut(start: chess.Board, line: list[chess.Move], replayed, length: int) -> _
     return _Window(end, tuple(line[:length]), unfinished, mated)
 
 
+def _exchange_on_the_square(
+    board: chess.Board,
+    move: chess.Move,
+    recapture: chess.Move,
+    lost: chess.Piece,
+    capturer: chess.Piece,
+    moved: chess.Piece,
+) -> HangingPieceFinding | None:
+    """M captured and the opponent recaptures on the same square: judge only that exchange.
+
+    ``lost`` is the user's piece on the square after M (the moved piece, or what a pawn promoted to).
+    """
+    taken = chess.PAWN if board.is_en_passant(move) else board.piece_type_at(move.to_square)
+    material_lost = PIECE_VALUES[lost.piece_type] - PIECE_VALUES[taken]
+    if material_lost < MIN_MATERIAL_LOSS:
+        return None
+    return HangingPieceFinding(
+        evidence_line=(recapture,),
+        piece=chess.piece_name(lost.piece_type),
+        square=chess.square_name(move.to_square),
+        captured_by=chess.piece_name(capturer.piece_type),
+        material_lost=material_lost,
+        moved_piece=chess.piece_name(moved.piece_type),
+        moved_from=chess.square_name(move.from_square),
+        moved_to=chess.square_name(move.to_square),
+    )
+
+
 def detect(
     board: chess.Board,
     move: chess.Move,
@@ -186,8 +220,7 @@ def detect(
         return None
     capturer = after.piece_at(first.from_square)
     if board.is_capture(move) and first.to_square == move.to_square:
-        # The opponent recaptures: the user started an exchange (rule 2).
-        return None
+        return _exchange_on_the_square(board, move, first, target, capturer, moved)
 
     played = [move, *principal_variation]
     best = list(best_line)
