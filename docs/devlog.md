@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-16: Hanging-piece loss measured against the engine's best line (#31 / PR #42)
+## 2026-11-16: Hanging-piece loss measured against the engine's best line (#31 / PR #42, #43)
 
 **Goal:** `hanging-0.3`. Measure what a move cost compared with the engine's choice, never judge a line in the middle of an exchange, and run the window through checks. Phase 1 hardening item H2 from the 2026-11-14 code review (A2, A7, the window part of A4).
 
@@ -34,7 +34,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - **No finding when a window ends on a forcing ply** (review A7). The test `test_cut_after_four_plies_the_same_exchange_looks_level` asserted that a line cut after four plies of an exchange should be judged "level". It is replaced by tests that such lines are not judged at all; the A7 line (Ke2 with only Nxb5) fired with loss 3 in v0.2 and no longer does.
 - **Exchange on the square, and a played-line guard, both from the demo check.** The best-line baseline mixes "missed a win" with "hung a piece":
   - In `001c7wqq` the user traded queens (Qxd8+ Bxd8) instead of winning a rook (Qxa8), and v0.3 without a rule for it reported "queen hanging on d8, lost 6". When the opponent recaptures on the square the user's move captured on, only that exchange is judged: queen for queen is 0, no finding.
-  - A plain "no finding on a recapture" guard was tried first. It also dropped the most common hung piece of all, a piece taking a defended pawn, so it was replaced in review by judging the exchange on the square.
+  - A plain "no finding on a recapture" guard was tried first and merged with PR #42. It also dropped the most common hung piece of all, a piece taking a defended pawn, so it was replaced in review by judging the exchange on the square (PR #43, pushed after #42 was merged).
   - A quiet move followed by an even trade, with a best line that wins something, would fire the same way. The played-line guard stops it.
 
   `materialLost` stays the loss against the best line, so it can include a missed gain (008pkspi: rook for knight, while the best line ends a pawn up: 4).
@@ -68,7 +68,7 @@ No new finding appears in the other 13 games. **5 distinct games** keep a findin
 - **The golden files of #33** will be taken with `hanging-0.3`; any later detector change regenerates them on purpose.
 - **Stored demo findings** in an existing database keep `hanging-0.2` until the games are analysed again. A fresh `docker compose down -v` gives `hanging-0.3`.
 
-**Links:** [#31](https://github.com/Gergo019/blindspot-chess/issues/31), [PR #42](https://github.com/Gergo019/blindspot-chess/pull/42), [ADR 0004](decisions/0004-hanging-piece-detector.md), [#41](https://github.com/Gergo019/blindspot-chess/issues/41), the code review of 2026-11-14 (A2, A4, A7)
+**Links:** [#31](https://github.com/Gergo019/blindspot-chess/issues/31), [PR #42](https://github.com/Gergo019/blindspot-chess/pull/42), [PR #43](https://github.com/Gergo019/blindspot-chess/pull/43) (exchange on the square), [ADR 0004](decisions/0004-hanging-piece-detector.md), [#41](https://github.com/Gergo019/blindspot-chess/issues/41), the code review of 2026-11-14 (A2, A4, A7)
 
 ## 2026-11-16: Transient analysis-service failures no longer fail games (#30 / PR #38, #39)
 
