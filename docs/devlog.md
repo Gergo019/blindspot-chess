@@ -4,6 +4,33 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-16: ADR 0007, frontend decisions, and UI before Phase 2 (#49 / PR #PRNUM)
+
+**Goal:** Settle the frontend's board component, licences, layout and theme before any frontend code, and record the new order of work.
+
+**Changes:**
+- [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md): react-chessboard (MIT) instead of Chessground (GPL-3.0); the Cburnett piece set under its BSD option, with attribution; chess.js (BSD-2-Clause); Inter (OFL 1.1), self-hosted; Lichess's principles but not its look; no gamification; the layout of the findings screen; how evidence is drawn; the dark and light theme and the two meaning colours (orange `#F0883E` for "your mistake", blue `#58A6FF` / `#1F6FEB` for evidence).
+- README roadmap: Phase 1 ticked (v0.1.0), and a "Next, in this order" list. CHANGELOG.
+- Issues: #49 (this ADR), #50 (scaffold and theme), #51 (read-only findings and patterns API, split out of #24), #24 narrowed to the frontend screen with the layout from the ADR, #52 (Playwright).
+
+**Decisions:**
+- **UI before Phase 2.** The order is now ADR 0007 → scaffold and theme (#50) → findings and patterns API (#51) → findings screen (#24) → Playwright (#52) → one or two Cucumber scenarios → knight fork (#26). Reasons: the screen is demoable from the data that already exists (the demo's 5 hanging-piece findings), so the pipeline's output can be seen and checked on a board rather than in SQL; and the React frontend becomes visible in the repo. Phase 2's detectors then land in a UI where each new finding can be checked by eye.
+- **#24 split.** The backend API (#51) and the screen (#24) are separate PRs: each is reviewable on its own, and the API's query-count test (the N+1 item of #37) does not depend on any frontend.
+- **The piece set's licence was checked, not assumed.** react-chessboard's package is MIT but does not name its default pieces. Their SVG paths are the Cburnett set from Wikimedia Commons, which is offered under GFDL (relicensed to CC BY-SA 3.0), BSD or GPL. Using it under BSD keeps the frontend permissive; the attribution goes into `THIRD_PARTY_NOTICES.md` with the scaffold (#50). Alternative rejected: drawing our own pieces now, which is work with no product value at this stage.
+- **`EvidenceBoard` draws only today's facts** (piece and square, moved piece, evidence line). New fact types bring their renderer in the same PR (#34); a test keeps "every fact type has a renderer" true.
+- **The mockup stays private.** The ADR describes its decisions in words; from now on the implementation is the reference.
+
+**Verification:**
+- Versions and licences from the npm registry on 2026-11-16: react-chessboard 5.12.1 (MIT, released 2026-08-16, peer React 19), Chessground 9.2.1 (GPL-3.0-or-later), chess.js 1.4.0 (BSD-2-Clause), `@fontsource-variable/inter` 5.3.0 (OFL-1.1).
+- Piece set: the default pawn in react-chessboard 5.12.1 (`dist/index.esm.js`, `wP`, a 45×45 viewBox) has the path of Commons' `Chess_plt45.svg` by Cburnett; the Commons licence template is `{{self|GFDL|migration=relicense|BSD|GPL}}`.
+- Docs only; CI runs as usual.
+
+**Open points / risks:**
+- The light theme's contrast for the orange and blue highlights on the blue-grey squares is checked in #50; if one falls short, the highlight style changes, not the colours.
+- react-chessboard is maintained by one person. The board is wrapped in our own `EvidenceBoard`, so a replacement would touch one component.
+
+**Links:** [#49](https://github.com/Gergo019/blindspot-chess/issues/49), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [#50](https://github.com/Gergo019/blindspot-chess/issues/50), [#51](https://github.com/Gergo019/blindspot-chess/issues/51), [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [#52](https://github.com/Gergo019/blindspot-chess/issues/52), [#26](https://github.com/Gergo019/blindspot-chess/issues/26)
+
 ## 2026-11-16: Release v0.1.0 (PR #48)
 
 **Goal:** Close Phase 1 with a tagged release: a fresh clone runs end to end with one command, and the CHANGELOG, README and this log say exactly what v0.1.0 does and does not do.

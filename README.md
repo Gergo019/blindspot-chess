@@ -139,11 +139,13 @@ users ──< chess_accounts ──< games ──< move_evaluations ──< mist
 
 ## Roadmap
 
-- [ ] **Phase 1, pipeline**: background import of recent completed Lichess rapid games (bounded, deduplicated by game id) ✓, `POST /analyze` with pinned Stockfish ✓, background analysis of imported games ✓, seeded demo data from the open database ✓. **Done when** CI sends one known finished game through backend → analysis service → Stockfish and asserts the expected motif comes back with a replayable line.
+**Next, in this order** (decided 2026-11-16, [ADR 0007](docs/decisions/0007-frontend-board-and-visual-identity.md)): the read-only findings screen comes before Phase 2's detectors, so the existing findings can be seen and checked on a board, and the React frontend exists in the repo. ADR 0007 ([#49](https://github.com/Gergo019/blindspot-chess/issues/49)) → frontend scaffold and theme ([#50](https://github.com/Gergo019/blindspot-chess/issues/50)) → findings and patterns API ([#51](https://github.com/Gergo019/blindspot-chess/issues/51)) → findings screen ([#24](https://github.com/Gergo019/blindspot-chess/issues/24)) → Playwright tests ([#52](https://github.com/Gergo019/blindspot-chess/issues/52)) → one or two Cucumber scenarios → knight-fork detector ([#26](https://github.com/Gergo019/blindspot-chess/issues/26)).
+
+- [x] **Phase 1, pipeline** (v0.1.0): background import of recent completed Lichess rapid games (bounded, deduplicated by game id) ✓, `POST /analyze` with pinned Stockfish ✓, background analysis of imported games ✓, seeded demo data from the open database ✓. **Done when** CI sends one known finished game through backend → analysis service → Stockfish and asserts the expected motif comes back with a replayable line.
 - [ ] **Phase 2, findings**: detectors for the two motifs with evidence lines, the pattern report and its evidence threshold
-- [ ] **Phase 3, practice**: board-first React screen, own-game and transfer drills, Playwright tests
+- [ ] **Phase 3, practice**: board-first React screen (started early, see above), own-game and transfer drills, Playwright tests
 - [ ] **Phase 4, explanations**: typed claims and templates, then the `LLM_FREE` / `LLM_FACTS` experiment and its evaluation report
-- [ ] **Phase 5, operations**: Cucumber acceptance suite, Kubernetes manifests, hosted demo
+- [ ] **Phase 5, operations**: Cucumber acceptance suite (first scenarios after the Playwright tests), Kubernetes manifests, hosted demo
 
 ## Contributing
 
