@@ -34,6 +34,17 @@ class DomainRulesTest {
     }
 
     @Test
+    void onlyTemplateExplanationsAreShowableEvenWhenAnLlmTextPasses() {
+        for (Mode mode : new Mode[] { Mode.LLM_FREE, Mode.LLM_FACTS }) {
+            Explanation llm = Explanation.llm(finding, mode, "model", "v1", FACTS, "Your knight on e5 is loose.");
+            llm.recordVerification(0, null);
+
+            assertThat(llm.getVerificationStatus()).isEqualTo(Explanation.VerificationStatus.PASSED);
+            assertThat(llm.isShowable()).as(mode.name()).isFalse();
+        }
+    }
+
+    @Test
     void anyUnsupportedClaimFailsTheExplanation() {
         Explanation explanation = Explanation.llm(finding, Mode.LLM_FREE, "model", "v1", FACTS,
                 "Nxe5 loses because Black wins the rook on h1.");

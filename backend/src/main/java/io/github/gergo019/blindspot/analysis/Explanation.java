@@ -18,7 +18,8 @@ import jakarta.persistence.Table;
  * A plain-language explanation of a finding. Code extracts the checked facts
  * first (pieces, squares, the evidence line); the text is then either a
  * template filled from those facts or an LLM explanation of them.
- * Product rule: only PASSED explanations are ever shown to a player.
+ * Product rule: only verified explanations are ever shown to a player; in
+ * v1 that means TEMPLATE explanations that PASSED verification (ADR 0003).
  */
 @Entity
 @Table(name = "explanations")
@@ -113,8 +114,13 @@ public class Explanation extends BaseEntity {
         this.verificationStatus = unsupportedClaims == 0 ? VerificationStatus.PASSED : VerificationStatus.FAILED;
     }
 
+    /**
+     * Whether a player may see this text: a TEMPLATE explanation that PASSED
+     * verification. LLM modes stay an experiment until a recorded decision
+     * enables one (ADR 0003), even when they pass.
+     */
     public boolean isShowable() {
-        return verificationStatus == VerificationStatus.PASSED;
+        return mode == Mode.TEMPLATE && verificationStatus == VerificationStatus.PASSED;
     }
 
     public MistakeFinding getFinding() {

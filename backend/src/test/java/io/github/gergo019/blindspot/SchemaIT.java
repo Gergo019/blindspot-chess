@@ -86,6 +86,13 @@ class SchemaIT {
         Explanation rejected = Explanation.llm(finding, Mode.LLM_FREE, "model", "v1", FACTS, "Wins the h1 rook.");
         rejected.recordVerification(1, "unsupported capture");
         explanations.save(rejected);
+        // Passes verification, but is not a template: never showable in v1 (ADR 0003).
+        Explanation passedLlm = Explanation.llm(finding, Mode.LLM_FACTS, "model", "v1", FACTS,
+                "Your knight on e5 can be taken.");
+        passedLlm.recordVerification(0, null);
+        explanations.save(passedLlm);
+        Explanation unverifiedTemplate = Explanation.template(finding, FACTS, "Not checked yet.");
+        explanations.save(unverifiedTemplate);
         Explanation template = Explanation.template(finding, FACTS, "Your knight on e5 is unprotected.");
         template.recordVerification(0, null);
         explanations.save(template);
@@ -101,8 +108,8 @@ class SchemaIT {
         assertThat(findings.findByUserAndMotif(user.getId(), Motif.HANGING_PIECE)).hasSize(1);
         assertThat(findings.findGameIdsWithMotif(Motif.HANGING_PIECE, java.util.List.of(game.getId())))
                 .containsExactly(game.getId());
-        assertThat(explanations.findShowable(finding.getId())).extracting(Explanation::getMode)
-                .containsExactly(Mode.TEMPLATE);
+        assertThat(explanations.findShowable(finding.getId())).extracting(Explanation::getContent)
+                .containsExactly("Your knight on e5 is unprotected.");
         assertThat(drills.findByUserIdAndNextReviewAtLessThanEqualOrderByNextReviewAtAsc(user.getId(), now))
                 .extracting(Drill::getKind)
                 .containsExactly(Drill.Kind.TRANSFER);
