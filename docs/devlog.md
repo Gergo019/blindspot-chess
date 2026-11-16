@@ -30,7 +30,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 
 **Verification:**
 - **arm64 (this Mac, Apple Silicon, Stockfish `linux-arm64-universal`):** the golden files were generated here; afterwards, in a freshly built test image, `regenerate.py` without `--write` reports both files unchanged, and the full analysis-service suite passes: 148 passed in 90 s, including the 3 golden tests (`uname -m`: `aarch64`).
-- **amd64:** CI runs the same golden tests on the x86-64 binary. CI_RESULT
+- **amd64:** CI on PR #46 ran the same golden tests on the x86-64 binary: both games match the files generated on arm64 exactly, 148 passed in 75 s. Both lock files installed with `--require-hashes` on the runner. First run green, about 3m20s in all: analysis service 2m06s, backend 1m21s, Compose stack 1m06s.
 - Analysis-service image builds with `--require-hashes` for both lock files.
 - Backend `mvn verify` in Docker: 76 unit tests and 26 integration tests green, including the new `SchemaIT` tests (threads and hash size stored; a pre-V4 row with NULLs loads with `isComplete() == false`; one without the other is rejected by the database) and `DomainRulesTest` for `EngineRun`.
 
