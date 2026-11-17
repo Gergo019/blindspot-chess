@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- Roadmap: the read-only findings screen comes before Phase 2's detectors; frontend decisions (react-chessboard, licences, layout, theme) recorded in [ADR 0007](docs/decisions/0007-frontend-board-and-visual-identity.md) (#49)
+
 ## [0.1.0] - 2026-11-16
 
 Phase 1: import, analysis, hanging-piece detection and demo data. No user interface yet.
