@@ -122,8 +122,11 @@ export function FindingsScreen({ findingId, navigate }: Props) {
   return (
     <main className="layout">
       <section className="board-column" aria-label="Board">
-        <EvidenceBoard view={view} />
-        <p className="board-caption" aria-live="polite">
+        <EvidenceBoard
+          view={view}
+          label={`Chess board seen from ${view.orientation === "white" ? "White" : "Black"}${view.caption ? `: ${view.caption}` : ""}`}
+        />
+        <p className="board-caption" role="status">
           {view.caption}
         </p>
         <Legend />

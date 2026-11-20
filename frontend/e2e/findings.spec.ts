@@ -66,37 +66,42 @@ test("4. chips and the arrow keys, Home and End step through the evidence line o
 }) => {
   await openFindings(page);
   await expect(page.getByRole("heading", { name: "Hanging piece · 18… Rb6" })).toBeVisible();
-  const caption = page.getByText(/^(Position before|After your move|Evidence move)/);
+  // The board caption is a live status; react-chessboard's drag library adds an empty one of its own.
+  const caption = page.getByRole("status").filter({
+    hasText: /^(Position before|After your move|Evidence move|The engine's best move|Position after)/,
+  });
 
   // Before the mistake: the rook is still on b8, b6 is empty.
   await expect(caption).toHaveText("Position before your move 18… Rb6");
-  expect(await pieceOn(page, "b8")).toBe("bR");
-  expect(await pieceOn(page, "b6")).toBeNull();
+  await expect.poll(() => pieceOn(page, "b8")).toBe("bR");
+  await expect.poll(() => pieceOn(page, "b6")).toBeNull();
 
   // A chip: after 19. Nxb6 the white knight stands on b6 and has left c4.
   const chips = page.getByRole("list", { name: "Your move and what follows" });
   await chips.getByRole("button", { name: "19. Nxb6" }).click();
   await expect(caption).toHaveText("Evidence move 1 of 6: 19. Nxb6");
   await expect(chips.getByRole("button", { name: "19. Nxb6" })).toHaveAttribute("aria-current", "step");
-  expect(await pieceOn(page, "b6")).toBe("wN");
-  expect(await pieceOn(page, "c4")).toBeNull();
+  await expect.poll(() => pieceOn(page, "b6")).toBe("wN");
+  await expect.poll(() => pieceOn(page, "c4")).toBeNull();
 
   await page.keyboard.press("Home");
   await expect(caption).toHaveText("Position before your move 18… Rb6");
-  expect(await pieceOn(page, "b8")).toBe("bR");
+  await expect.poll(() => pieceOn(page, "b8")).toBe("bR");
 
   await page.keyboard.press("ArrowRight");
   await expect(caption).toHaveText("After your move 18… Rb6");
-  expect(await pieceOn(page, "b6")).toBe("bR");
+  await expect.poll(() => pieceOn(page, "b6")).toBe("bR");
 
   await page.keyboard.press("End");
   await expect(caption).toHaveText("Evidence move 6 of 6: 21… Qf6");
-  expect(await pieceOn(page, "f6")).toBe("bQ");
+  await expect.poll(() => pieceOn(page, "f6")).toBe("bQ");
 
   await page.keyboard.press("ArrowLeft");
   await expect(caption).toHaveText("Evidence move 5 of 6: 21. Bf1");
-  expect(await pieceOn(page, "f1")).toBe("wB");
-  expect(await pieceOn(page, "f6")).toBe("bN");
+  await expect.poll(() => pieceOn(page, "f1")).toBe("wB");
+  // 20… Nd5 moved the knight off f6 earlier in the line, so f6 is empty until 21… Qf6.
+  await expect.poll(() => pieceOn(page, "f6")).toBeNull();
+  await expect.poll(() => pieceOn(page, "d5")).toBe("bN");
 });
 
 test("5. the best move is drawn on request, and a move-list click shows that position", async ({ page }) => {
@@ -106,12 +111,12 @@ test("5. the best move is drawn on request, and a move-list click shows that pos
   await page.getByRole("button", { name: "Show the best move" }).click();
   await expect(page.getByText("The engine's best move instead: 18… Nd4")).toBeVisible();
   await expect(board(page).locator('[data-arrow="c6d4"]')).toHaveAttribute("data-kind", "evidence");
-  expect(await pieceOn(page, "b8")).toBe("bR");
+  await expect.poll(() => pieceOn(page, "b8")).toBe("bR");
 
   const moves = page.getByRole("region", { name: "Moves" });
   await expect(moves.getByRole("button", { name: /^18… Rb6, Blunder, the finding$/ })).toBeVisible();
   await moves.getByRole("button", { name: /^19\. Nxb6,/ }).click();
   await expect(page.getByText("Position after 19. Nxb6")).toBeVisible();
   await expect(moves.getByRole("button", { name: /^19\. Nxb6,/ })).toHaveAttribute("aria-current", "step");
-  expect(await pieceOn(page, "b6")).toBe("wN");
+  await expect.poll(() => pieceOn(page, "b6")).toBe("wN");
 });

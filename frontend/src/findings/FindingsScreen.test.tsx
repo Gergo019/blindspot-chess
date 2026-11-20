@@ -163,6 +163,21 @@ describe("The board and the evidence line", () => {
   });
 });
 
+describe("The board for assistive technology", () => {
+  it("is one labelled image whose pieces are not tab stops", async () => {
+    mockHappyApi();
+    await openFinding();
+    expect(
+      screen.getByRole("img", { name: "Chess board seen from White: Position before your move 4. Nxe5" }),
+    ).toBe(board());
+    // react-chessboard renders pieces as draggable buttons; the inert wrapper takes them out of the tab order.
+    expect(board().firstElementChild).toHaveAttribute("inert");
+    // The caption is a live status (react-chessboard's drag library adds another, empty one).
+    const statuses = screen.getAllByRole("status").map((el) => el.textContent);
+    expect(statuses).toContain("Position before your move 4. Nxe5");
+  });
+});
+
 describe("Facts, explanation and footer", () => {
   it("lists the facts, has no explanation section when the API returns none, and names the engine", async () => {
     mockHappyApi();
