@@ -4,6 +4,68 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-20: Playwright end-to-end tests (#52 / PR #65)
+
+**Goal:** Prove the findings screen works in a real browser against the real stack and the 20 demo games, in CI, including accessibility and the CSP.
+
+**Changes:**
+- `frontend/e2e/` with `playwright.config.ts`:
+  - **Chromium only**, no retries (a flaky test fails), `forbidOnly` in CI;
+  - traces and screenshots kept on failure; HTML report;
+  - base URL from `E2E_BASE_URL`.
+- `e2e/fixtures.ts`: an automatic **guard** fixture records `securitypolicyviolation` events (listener injected before the page's scripts), console errors and uncaught exceptions, and fails the test if there are any. Only the error-state scenario allows one console message: the browser's own "Failed to load resource … 500". Also helpers: `pieceOn(square)` reads `data-piece` on a `data-square`; `findingRow(move)` finds a row by role and name.
+- **Scenarios** (all locators by role and accessible name, except the board's `data-square`/`data-piece`; no fixed sleeps; pieces checked with `expect.poll`, because the real board animates):
+  1. **Blind-spot card:** one motif; "in 5 of your last 20 rapid games", "A pattern"; no knight-fork text.
+  2. **Findings list:** 5 rows newest first (18… Rb6, 11… Be7, 8… Bh3, 5. Qe2, 33… Rc3+); the newest is selected into the URL; selecting Be7 changes the URL; reload keeps it; Back returns to Rb6.
+  3. **Deep link:** the id of 8… Bh3 from the API; `/findings/<id>` opens it and marks its row.
+  4. **Evidence line:**
+     - before the move: b8 rook, b6 empty;
+     - chip "19. Nxb6": knight on b6, c4 empty;
+     - Home: b8 rook; →: rook on b6;
+     - End: queen on f6;
+     - ←: bishop on f1, f6 empty, knight on d5;
+     - the caption at each step.
+  5. **Best move and move list:** "Show the best move" gives "18… Nd4" with the arrow c6d4 (kind evidence); the move list marks "18… Rb6, Blunder, the finding"; clicking "19. Nxb6" shows that position.
+  6. **Narrow screen (400×900):** the panel's top is below the board's bottom; the board is 300 to 400 px wide; no horizontal overflow (`scrollWidth <= clientWidth`).
+  7. **Theme:** `data-theme` dark by default; light after the toggle and after a reload.
+  8. **Error state:** `page.route` answers every `/api` call with 500 and a JDBC-like problem detail; the alert says "The list of findings could not be loaded." with "Try again"; neither the server text nor "500" appears.
+  9. **Accessibility:** `@axe-core/playwright`, tags WCAG 2.0/2.1 A and AA plus 2.2 AA, on the findings screen with an evidence move shown, in **both themes**: no serious or critical violations.
+- `e2e/wait-for-demo.sh`: polls the API until `sampleSize` is 20 (all demo games DONE) and there are 5 findings (timeout 15 min).
+- **CI: new job "End-to-end (Playwright)"** (needs backend, analysis-service and frontend):
+  - starts the stack with `.env.example` (demo profile), runs the Compose job's health loop, then the wait script;
+  - runs the suite in `mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb5460…` (`--network host`);
+  - on failure uploads `playwright-report/`, `test-results/` (traces, screenshots) and `docker compose logs` with `actions/upload-artifact` v7.0.2, pinned by SHA.
+- **Fixed in the app: the board was a keyboard and screen-reader trap** (found by scenario 9):
+  - react-chessboard (through dnd-kit) renders every piece as `role="button" tabindex="0" aria-disabled="true" aria-roledescription="draggable"` with drag instructions, even with dragging off. axe: "aria-command-name (serious)"; in the browser, 25 tab stops on this position.
+  - `EvidenceBoard` is now one `role="img"` with a label ("Chess board seen from Black: Position before your move 18… Rb6"), and its inside is `inert`. The board caption is `role="status"`. A unit test covers the label, the `inert` wrapper and the status.
+- Vitest is limited to `src/**/*.test.{ts,tsx}`. `e2e/tsconfig.json` (Node types); ESLint checks `playwright.config.ts` with it. `.gitignore`, `.prettierignore`, `.dockerignore` and the ESLint ignores cover `playwright-report/` and `test-results/`.
+- README "End-to-end tests" (how to run locally), `frontend/README.md`, THIRD_PARTY_NOTICES (test-only tools), CHANGELOG.
+
+**Decisions:**
+- **`frontend/e2e/`, not a top-level `e2e/`:** the tests are TypeScript against the frontend, share its `package.json`, lock file, lint and format rules, and Dependabot's npm entry. A separate project would duplicate all of that for no gain; they test the whole stack, but through the web app only.
+- **Run in the pinned Playwright image, locally and in CI:** v1.65.0-noble (multi-arch, so arm64 on the Mac, amd64 in CI) brings Chromium and its system libraries, and **Node 26.13.1**, the same version as `.nvmrc`. The alternative, `npx playwright install --with-deps` on the runner, downloads browsers and OS packages unpinned on every run.
+- **Versions:** `@playwright/test` **1.65.0** (Apache-2.0, 2026-11-05, 15 days old; 1.65.1 is too new); `@axe-core/playwright` **4.14.0** (MPL-2.0, 2026-10-15); `@types/node` 26.6.6 (MIT). `@axe-core/playwright` accepts any `playwright-core` and `axe-core ~4.14.0`, which pulled in a second `playwright-core` 1.65.1 and `axe-core` 4.14.1 (both too new). **npm `overrides` pin them to 1.65.0 and 4.14.0**, leaving one `playwright-core`. axe-core's MPL-2.0 is a file-level copyleft; it is a test tool and never shipped, noted in THIRD_PARTY_NOTICES.
+- **Playwright is updated by hand:** the browser image (digest in `ci.yml`) must match `@playwright/test`, and Dependabot cannot update an image inside a workflow. So `@playwright/test` and `playwright-core` are excluded from Dependabot and upgraded together with the image; a mismatch fails loudly ("Executable doesn't exist"). axe stays under Dependabot.
+- **A separate job, not more steps in "Docker Compose stack":** it waits several minutes for the demo analysis, which the smoke test does not need, and a separate name lets it be a required check of its own. It builds its own stack (the jobs run on separate runners).
+- **The demo data is the oracle:** five findings and "5 of 20" come from `hanging-0.4` on the 20 demo games. A detector change that changes them must update these scenarios in the same PR, as with the golden files.
+- **Accessibility exceptions: none.** After the board fix, axe reports no serious or critical violations in either theme. Minor and moderate results are not part of the gate.
+
+**Verification:**
+- Locally against the demo stack in the pinned image:
+  - first run: 6 of 10 passed. The failures: the caption locator matched two elements (now `role="status"`); a piece read during the board's animation (now `expect.poll`); axe's real board finding (fixed above).
+  - a second run failed with 502s: rebuilding the frontend had restarted the backend and my wait loop only checked nginx; the guard fixture reported it, and the CI job waits for both.
+  - one wrong expectation in my test: after 21. Bf1 the f6 square is empty, since 20… Nd5 moved the knight.
+  - then **10 of 10, and 50 of 50 with `--repeat-each=5 --workers=4`** (13.6 s).
+- Frontend unit tests: 97 green (1 new: the board as a labelled image with an inert inside); lint, types (app and e2e) and Prettier clean.
+- CI on PR #65, all five jobs green on the first run. **End-to-end (Playwright) 7m46s**: start the stack 85 s, wait for the demo analysis 342 s, Playwright 33 s with `npm ci` (**10 passed in 7.8 s**). Backend 2m18s, Analysis service 1m56s, Docker Compose stack 1m21s, Frontend 33 s.
+
+**Open points / risks:**
+- The suite needs the full demo analysis (a few minutes on the runner); the job has a 30-minute timeout and the wait script 15 minutes.
+- Chromium only; Firefox and WebKit are in the image if needed later.
+- Cucumber (one or two scenarios of the coaching loop) is next, as planned in ADR 0007.
+
+**Links:** [#52](https://github.com/Gergo019/blindspot-chess/issues/52), [PR #65](https://github.com/Gergo019/blindspot-chess/pull/65), [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [Playwright](https://playwright.dev/), [axe-core](https://github.com/dequelabs/axe-core)
+
 ## 2026-11-20: Findings screen (#24 / PR #64)
 
 **Goal:** The first real screen (ADR 0007): see the blind-spot report and every finding on a board, step through the evidence, and check where it came from. Read-only; no drills yet.

@@ -13,7 +13,7 @@ BlindSpot's own code is under the [MIT licence](LICENSE), except `analysis-servi
 | [React](https://react.dev/) and React DOM | 19.3.1 | MIT, Copyright (c) Meta Platforms, Inc. and affiliates | |
 | [@dnd-kit](https://dndkit.com/) (dependency of react-chessboard) | see `frontend/package-lock.json` | MIT, Copyright (c) 2021 Claudéric Demers | |
 
-Development tools (Vite, TypeScript, ESLint, Prettier, Vitest, Testing Library, jsdom) are used to build and test the app and are not shipped in it. Their versions and licences are recorded in `frontend/package-lock.json`.
+Development tools (Vite, TypeScript, ESLint, Prettier, Vitest, Testing Library, jsdom, and for the end-to-end tests Playwright, Apache-2.0, and axe-core with @axe-core/playwright, MPL-2.0) are used to build and test the app and are not shipped in it. Their versions and licences are recorded in `frontend/package-lock.json`.
 
 ## Analysis service
 

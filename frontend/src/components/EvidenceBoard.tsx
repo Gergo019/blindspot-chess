@@ -9,46 +9,55 @@ import { squareCentre } from "./boardGeometry";
  * arrows drawn by this component in an SVG layer over the board, so they get the same dark halo. Plain
  * react-chessboard arrows would be a flat colour, which reaches only 1.0 to 1.9:1 on the squares (#50).
  * Read-only: no dragging, no drawing.
+ *
+ * For assistive technology the board is one labelled image, and its inside is `inert`: react-chessboard
+ * renders every piece as a disabled "draggable" button with tabindex 0 (dnd-kit), which put 25 to 32
+ * unnamed tab stops with drag instructions on a read-only board (found by axe in #52). The caption, the
+ * move chips and the move list carry the same information for keyboard and screen-reader users.
  */
 export function EvidenceBoard({
   view,
+  label,
 }: {
   view: Pick<BoardView, "fen" | "orientation" | "arrows" | "marks">;
+  label: string;
 }) {
   const animate = !prefersReducedMotion();
   const squareStyles: Record<string, CSSProperties> = {};
   for (const mark of view.marks) squareStyles[mark.square] = highlightStyle(mark.kind);
 
   return (
-    <div className="board" data-testid="board" data-fen={view.fen}>
-      <Chessboard
-        options={{
-          id: "evidence-board",
-          position: view.fen,
-          boardOrientation: view.orientation,
-          allowDragging: false,
-          allowDrawingArrows: false,
-          showNotation: true,
-          // Respect "reduce motion"; without matchMedia (tests, very old browsers) do not animate either.
-          showAnimations: animate,
-          animationDurationInMs: 150,
-          squareStyles,
-          lightSquareStyle: { backgroundColor: "var(--square-light)" },
-          darkSquareStyle: { backgroundColor: "var(--square-dark)" },
-          lightSquareNotationStyle: { color: "var(--coordinate)" },
-          darkSquareNotationStyle: { color: "var(--coordinate)" },
-          boardStyle: { borderRadius: "6px", overflow: "hidden" },
-        }}
-      />
-      <svg className="board__arrows" viewBox="0 0 8 8" aria-hidden="true">
-        {view.arrows.map((arrow) => (
-          <ArrowShape
-            key={`${arrow.from}${arrow.to}${arrow.kind}`}
-            arrow={arrow}
-            orientation={view.orientation}
-          />
-        ))}
-      </svg>
+    <div className="board" data-testid="board" data-fen={view.fen} role="img" aria-label={label}>
+      <div className="board__inner" inert>
+        <Chessboard
+          options={{
+            id: "evidence-board",
+            position: view.fen,
+            boardOrientation: view.orientation,
+            allowDragging: false,
+            allowDrawingArrows: false,
+            showNotation: true,
+            // Respect "reduce motion"; without matchMedia (tests, very old browsers) do not animate either.
+            showAnimations: animate,
+            animationDurationInMs: 150,
+            squareStyles,
+            lightSquareStyle: { backgroundColor: "var(--square-light)" },
+            darkSquareStyle: { backgroundColor: "var(--square-dark)" },
+            lightSquareNotationStyle: { color: "var(--coordinate)" },
+            darkSquareNotationStyle: { color: "var(--coordinate)" },
+            boardStyle: { borderRadius: "6px", overflow: "hidden" },
+          }}
+        />
+        <svg className="board__arrows" viewBox="0 0 8 8" aria-hidden="true">
+          {view.arrows.map((arrow) => (
+            <ArrowShape
+              key={`${arrow.from}${arrow.to}${arrow.kind}`}
+              arrow={arrow}
+              orientation={view.orientation}
+            />
+          ))}
+        </svg>
+      </div>
     </div>
   );
 }

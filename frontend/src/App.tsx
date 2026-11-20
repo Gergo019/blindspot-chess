@@ -27,7 +27,10 @@ export function App() {
       ) : route.view === "games" ? (
         <main className="layout">
           <section className="board-column" aria-label="Board">
-            <EvidenceBoard view={{ fen: START_FEN, orientation: "white", arrows: [], marks: [] }} />
+            <EvidenceBoard
+              view={{ fen: START_FEN, orientation: "white", arrows: [], marks: [] }}
+              label="Chess board in the starting position"
+            />
             <Legend />
           </section>
           <SidePanel view="games" />

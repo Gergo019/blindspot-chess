@@ -6,14 +6,21 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "coverage"] },
+  { ignores: ["dist", "coverage", "playwright-report", "test-results"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.strictTypeChecked, prettier],
     languageOptions: {
       ecmaVersion: 2023,
       globals: globals.browser,
-      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+      parserOptions: {
+        // playwright.config.ts sits next to the app's tsconfig but is type-checked with the e2e one (Node types).
+        projectService: {
+          allowDefaultProject: ["playwright.config.ts"],
+          defaultProject: "e2e/tsconfig.json",
+        },
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     plugins: { "react-hooks": reactHooks, "react-refresh": reactRefresh },
     rules: {

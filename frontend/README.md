@@ -24,13 +24,14 @@ npm ci
 npm run dev        # http://localhost:5173, /api proxied to the backend on :8080
 ```
 
-| Command                                   | What it does                                                       |
-| ----------------------------------------- | ------------------------------------------------------------------ |
-| `npm run lint`                            | ESLint (typescript-eslint, strict type-checked rules, React hooks) |
-| `npm run format:check` / `npm run format` | Prettier                                                           |
-| `npm run typecheck`                       | `tsc --noEmit`                                                     |
-| `npm test`                                | Vitest + Testing Library, including the contrast test              |
-| `npm run build`                           | Type check, then the production build in `dist/`                   |
+| Command                                   | What it does                                                                                                                                          |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run lint`                            | ESLint (typescript-eslint, strict type-checked rules, React hooks)                                                                                    |
+| `npm run format:check` / `npm run format` | Prettier                                                                                                                                              |
+| `npm run typecheck`                       | `tsc --noEmit`                                                                                                                                        |
+| `npm test`                                | Vitest + Testing Library, including the contrast test                                                                                                 |
+| `npm run build`                           | Type check, then the production build in `dist/`                                                                                                      |
+| `npm run e2e`                             | Playwright end-to-end tests against a running stack with the demo data (`e2e/`; how to run them in the pinned image: root README, "End-to-end tests") |
 
 CI runs all of them in the job "Frontend (lint + test + build)".
 
