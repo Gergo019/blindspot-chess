@@ -20,6 +20,14 @@ updates:
       all:
         patterns: ["*"]
 
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      all:
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -29,7 +37,7 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: docker
-    directories: [/backend, /analysis-service]
+    directories: [/backend, /analysis-service, /frontend]
     schedule:
       interval: monthly
     groups:
@@ -47,6 +55,9 @@ updates:
       # update (#18). Ignore every tag change; Maven and JDK upgrades are done by hand.
       - dependency-name: maven
         update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      # Node: stay on the chosen LTS line (node:26); LTS upgrades are done by hand with .nvmrc.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
       # Python: stay on the version the tests run on (python:3.13-slim).
       - dependency-name: python
         update-types: ["version-update:semver-major", "version-update:semver-minor"]

@@ -66,11 +66,22 @@ services:
       retries: 12
       start_period: 10s
 
-  # frontend:          # Phase 3: React + TypeScript
-  #   build: ./frontend
-  #   depends_on: [backend]
-  #   ports:
-  #     - "5173:80"
+  frontend:
+    # React app served by nginx (non-root, port 8080 inside); /api is proxied to the backend (#50).
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BACKEND_ORIGIN: http://backend:8080
+    ports:
+      - "${FRONTEND_PORT:-8081}:8080"
+    healthcheck:
+      # nginx answers /healthz itself; the image has busybox wget but no curl.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
 volumes:
   db-data:

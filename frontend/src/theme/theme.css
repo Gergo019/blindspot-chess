@@ -1,0 +1,55 @@
+/*
+ * Design tokens (ADR 0007). Every colour the app uses is defined here, once per theme; components
+ * only use var(--...). contrast.test.ts reads this file and checks every text/background pair and
+ * every highlight against WCAG AA, so a colour change that breaks contrast fails the build.
+ *
+ * Meaning colours, identical in role in both themes:
+ *   --mistake  orange, always "your move / your mistake"
+ *   --evidence blue, always "evidence line"
+ * Neither is ever used as text or as a plain fill on the board: on the blue-grey squares they reach
+ * only about 1.2:1 to 2:1. Highlights are drawn as a ring between two --halo rings instead (see
+ * highlight.ts), and the halo carries the contrast (ADR 0007, "Theme").
+ */
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #111418;
+  --surface: #181c22;
+  --surface-raised: #20262e;
+  --border: #2d343d;
+  --text: #e6e9ee;
+  --text-muted: #9aa4b1;
+  --text-disabled: #848ea0;
+
+  --mistake: #f0883e;
+  --evidence: #58a6ff;
+  --focus: #58a6ff;
+
+  --square-light: #a9b7c6;
+  --square-dark: #6b7f95;
+  --coordinate: #0b0d10;
+  --halo: #0b0d10;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-raised: #eef1f4;
+  --border: #d5dbe2;
+  --text: #1b2128;
+  --text-muted: #57606b;
+  --text-disabled: #646d79;
+
+  --mistake: #f0883e;
+  --evidence: #1f6feb;
+  --focus: #1f6feb;
+
+  --square-light: #d6dee8;
+  --square-dark: #8fa3b8;
+  --coordinate: #0b0d10;
+  --halo: #0b0d10;
+}

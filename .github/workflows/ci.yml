@@ -40,20 +40,58 @@ jobs:
       - name: Run pytest inside the image
         run: docker run --rm analysis-test
 
+  frontend:
+    # The job name is meant to become a required status check on main; keep it unchanged.
+    name: Frontend (lint + test + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Lint
+        run: npm run lint
+      - name: Formatting
+        run: npm run format:check
+      - name: Type check
+        run: npm run typecheck
+      - name: Tests (incl. WCAG contrast of every theme token pair)
+        run: npm test
+      - name: Build
+        run: npm run build
+
   compose:
     name: Docker Compose stack
     runs-on: ubuntu-latest
-    needs: [backend, analysis-service]
+    needs: [backend, analysis-service, frontend]
     steps:
       - uses: actions/checkout@v7
       - run: docker compose config --quiet
       - name: Start the stack and smoke-test the health endpoints
         run: |
           docker compose up -d --build
-          for url in http://localhost:8000/health http://localhost:8080/health; do
+          for url in http://localhost:8000/health http://localhost:8080/health http://localhost:8081/healthz; do
             for i in $(seq 1 60); do curl -fsS "$url" && echo && break; sleep 2; done
             curl -fsS "$url" > /dev/null
           done
+      - name: Frontend serves the app and proxies /api to the backend
+        run: |
+          curl -fsS http://localhost:8081/ | grep -q "<title>BlindSpot</title>"
+          # No /api endpoint exists yet (#51). Through nginx, /api/proxy-check must give the backend's
+          # own answer: the same status as asking the backend directly, and Spring's JSON error body
+          # naming the path. nginx's 404 page or the single-page-app fallback (200, index.html) would not.
+          via_frontend=$(curl -sS -w '\n%{http_code}' http://localhost:8081/api/proxy-check)
+          direct=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8080/api/proxy-check)
+          echo "via frontend: $via_frontend"; echo "direct status: $direct"
+          test "$(echo "$via_frontend" | tail -n1)" = "$direct"
+          echo "$via_frontend" | grep -q '"path":"/api/proxy-check"'
+          test "$(docker compose ps --format '{{.Health}}' frontend)" = healthy
       - if: failure()
         run: docker compose logs
       - if: always()

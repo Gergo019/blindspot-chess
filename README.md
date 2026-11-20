@@ -4,7 +4,7 @@
 
 BlindSpot finds a mistake you keep making in your own games, lets you practise it on the positions where it happened, and then checks whether the lesson carries over to positions you have never seen.
 
-> Status: **v0.1.0: Phase 1 complete (import, analysis, hanging-piece detection, demo data). No user interface yet.**
+> Status: **v0.1.0: Phase 1 complete (import, analysis, hanging-piece detection, demo data).** The web app's shell (#50) is in place; the findings screen follows in #24.
 
 ## The coaching loop
 
@@ -75,7 +75,7 @@ The evaluation reports, per mode, unsupported claims (including examples that re
 | REST and service boundaries | backend calls the analysis service over REST; Lichess API integration |
 | Domain-Driven Design | bounded contexts, entities that guard their own invariants |
 | Testing | JUnit 5 unit tests (Surefire), Testcontainers integration tests (`*IT`, Failsafe) on real PostgreSQL, an end-to-end test that runs a known game through the backend, the real analysis service and Stockfish, and the Lichess import tested against recorded API responses (never the live API); planned: Cucumber acceptance tests, Playwright end-to-end tests |
-| React + TypeScript | `frontend/` (Phase 3) |
+| React + TypeScript | `frontend/`: Vite, strict TypeScript, ESLint, Vitest + Testing Library, a WCAG contrast test over every theme colour pair, served by nginx as a non-root container |
 | CI/CD and containers | GitHub Actions, Docker multi-stage builds, Docker Compose; planned: Kubernetes manifests tested on kind |
 | Applied AI, measured | validated typed claims, and a measured experiment comparing templates with AI explanations (planned) |
 | Team workflow | [golden rules](CONTRIBUTING.md), PR templates, decision records in [`docs/decisions`](docs/decisions) |
@@ -91,6 +91,7 @@ docker compose up --build
 
 | Service | URL |
 |---|---|
+| Web app | http://localhost:8081 (React, served by nginx; `/api` is proxied to the backend) |
 | Backend | http://localhost:8080/health |
 | Analysis service | http://localhost:8000/health (reports the pinned Stockfish version, depth, threads and hash size); `POST /analyze`, see [analysis-service](analysis-service/README.md) |
 | PostgreSQL | `localhost:5432` (db/user/password from `.env`) |
@@ -127,6 +128,12 @@ Analysis-service tests run inside its Docker image, with the same pinned Stockfi
 cd analysis-service && docker build --target test -t analysis-test . && docker run --rm analysis-test
 ```
 
+### Web app
+
+![The app shell in the dark theme: the board in the starting position, the legend and keyboard hint under it, and the side panel with "No findings yet"](docs/images/frontend-shell-dark.png)
+
+Dark is the default; the toggle in the header switches to the light theme and the choice is remembered. For frontend development without Docker (Node 26, the version in `frontend/.nvmrc`), see [frontend](frontend/README.md).
+
 ## Data model
 
 ```
@@ -153,4 +160,4 @@ All work follows the [golden rules](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE). Stockfish is GPL-3.0 and runs as a separate program; it is not linked into this code.
+[MIT](LICENSE). Stockfish is GPL-3.0 and runs as a separate program; it is not linked into this code. Third-party software, the chess pieces and the font are listed with their licences in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
