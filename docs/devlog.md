@@ -26,8 +26,8 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - #58's failing job log: `npm error ERESOLVE could not resolve … While resolving: typescript-eslint@8.73.0 … Found: typescript@7.0.2`.
 - `dependabot.yml` parses; the npm entry has the new ignore rule.
 - GPL text: `diff -w` against Stockfish's `COPYING.txt` from the analysis-service image shows no difference.
-- CI on PR #59: CI_RESULT
-- After merge: CI_DEPENDABOT
+- CI on PR #59, green on the first run: Frontend 22 s, Backend 1m50s, Analysis service 1m54s, Docker Compose stack 1m15s.
+- After merge: `@dependabot recreate` on #58 (or closing it for a fresh Dependabot PR). Its result is reported on #58 and recorded in the next devlog entry, since it can only happen once this PR is on `main`.
 
 **Open points / risks:**
 - When typescript-eslint supports TypeScript 7, remove the ignore rule and upgrade TypeScript (and check the `tsconfig` options).
