@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-20: Local-only ports, least-privilege CI, pinned actions, SECURITY.md (PR #PRNUM)
+## 2026-11-20: Local-only ports, least-privilege CI, pinned actions, SECURITY.md (PR #62)
 
 **Goal:** Basic security hygiene before the first API (#51): nothing of the local stack is reachable from the network, CI has only the rights it needs and runs exactly the action code that was reviewed, there is a private way to report problems, and the web app sends tested security headers.
 
@@ -50,14 +50,14 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - `docker compose exec` health: Stockfish 19, depth 16, 1 thread, 64 MB.
   - The headers are present on `/`, on hashed assets and on proxied `/api` responses; `Server: nginx` carries no version.
 - **Headless Chrome against the running stack:** with "light" stored, the page comes up light (the hashed inline script ran under the CSP), with 32 pieces and Inter loaded; **0 `securitypolicyviolation` events** and no console messages.
-- CI on PR #PRNUM: CI_RESULT
+- CI on PR #62: CI_RESULT
 
 **Open points / risks:**
 - A developer who called `localhost:8000` directly against the Compose stack now has to use `docker compose exec` or run the service on its own (documented).
 - The first Dependabot `github-actions` run after this PR shows whether SHA updates arrive as expected.
 - Testcontainers still maps random host ports on all interfaces during backend tests; that is a test-time, short-lived exposure and out of scope here.
 
-**Links:** [#60](https://github.com/Gergo019/blindspot-chess/issues/60), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [SECURITY.md](../SECURITY.md), [dependabot-core version commenter](https://github.com/dependabot/dependabot-core/blob/main/github_actions/lib/dependabot/github_actions/file_updater/workflow_updater/version_commenter.rb)
+**Links:** [#60](https://github.com/Gergo019/blindspot-chess/issues/60), [PR #62](https://github.com/Gergo019/blindspot-chess/pull/62), [SECURITY.md](../SECURITY.md), [dependabot-core version commenter](https://github.com/dependabot/dependabot-core/blob/main/github_actions/lib/dependabot/github_actions/file_updater/workflow_updater/version_commenter.rb)
 
 ## 2026-11-20: Frontend scaffold, theme and app shell (#50 / PR #54)
 
