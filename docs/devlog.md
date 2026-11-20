@@ -57,7 +57,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - `/api/findings/1`: Rb6 (ply 36) with `fenBefore`, best `c6d4`, a 6-move evidence line, Stockfish 19 at depth 16 with 1 thread and 64 MB, and `explanation: null`.
   - `/api/games/8/moves`: 39 moves, ply 36 BLUNDER.
   - `/api/docs`: OpenAPI 3.1.0 with the four paths; `POST /api/findings` gives 405.
-- CI on PR #63: CI_RESULT
+- CI on PR #63, green on the first run: Backend 2m30s (with the 38 new integration tests), Analysis service 2m48s, Frontend 22 s, Docker Compose stack 1m26s (the proxy check now matches the backend's problem detail).
 
 **Open points / risks:**
 - The report reads up to 20 game ids per request, then runs one grouped count. Existing indexes cover both (V1, checked): `games_account_played_at_idx` on `games (account_id, played_at DESC)`, the unique `(game_id, ply)` on `move_evaluations`, and the unique `(move_evaluation_id, motif)` on `mistake_findings`. Revisit only with many users.
