@@ -10,7 +10,7 @@ COPY src ./src
 RUN mvn -B -q package -DskipTests
 
 # Runtime stage
-FROM eclipse-temurin:25-jre@sha256:a640968ae55027b322cedd5f8228b01a84baff0b9e9360e47601c6a111ba1699
+FROM eclipse-temurin:25-jre@sha256:945247f9d092703e0c6be92243ef3c51640229e23ab34d353c8dcdc73e6cd4e6
 WORKDIR /app
 RUN useradd --system --uid 1001 app
 COPY --from=build /build/target/*.jar app.jar
