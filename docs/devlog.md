@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-20: Frontend scaffold, theme and app shell (#50 / PR #PRNUM)
+## 2026-11-20: Frontend scaffold, theme and app shell (#50 / PR #54)
 
 **Goal:** The foundation of the web app (ADR 0007): a strict React + TypeScript build with lint, tests and CI, the dark and light theme with tested contrast, the app shell with a working board, and an nginx container in the Compose stack. No API calls and no findings yet (#51, #24).
 
@@ -50,7 +50,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - Image: `/healthz` answers `ok`; `/` serves the app; `/games` falls back to `index.html`; `Cache-Control: no-cache` and `nosniff` are set; it runs as `uid=101(nginx)`; without a backend, `/api` answers 502.
 - Full stack locally: frontend healthy; `/api/proxy-check` through nginx and straight to the backend both give Spring's 404 JSON with `"path":"/api/proxy-check"`.
 - Screenshots with headless Chrome against the stack (dark, light, and 420 px wide): the stored theme is applied, 32 pieces are on the board, and the font in use is Inter Variable. Dark and light are in `docs/images/`.
-- CI on PR #PRNUM: CI_RESULT
+- CI on PR #54: CI_RESULT
 
 **Open points / risks:**
 - **python-chess is GPL-3.0 and is imported by the analysis service's code**, unlike Stockfish, which runs as a separate program. ADR 0002 treats the analysis service as part of an MIT project. Whether that service must itself be GPL (it is a separate program from the backend and the frontend) needs a decision; it is listed accurately in `THIRD_PARTY_NOTICES.md` meanwhile.
@@ -58,7 +58,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - The halo is dark in both themes, which reads well on the board but looks heavy on the light panel; revisit when real highlights appear in #24.
 - The required status check "Frontend (lint + test + build)" has to be added to branch protection by hand.
 
-**Links:** [#50](https://github.com/Gergo019/blindspot-chess/issues/50), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md), [Node release schedule](https://github.com/nodejs/Release)
+**Links:** [#50](https://github.com/Gergo019/blindspot-chess/issues/50), [PR #54](https://github.com/Gergo019/blindspot-chess/pull/54), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md), [Node release schedule](https://github.com/nodejs/Release)
 
 ## 2026-11-16: ADR 0007, frontend decisions, and UI before Phase 2 (#49 / PR #53)
 
