@@ -4,7 +4,7 @@
 
 BlindSpot finds a mistake you keep making in your own games, lets you practise it on the positions where it happened, and then checks whether the lesson carries over to positions you have never seen.
 
-> Status: **v0.1.0: Phase 1 complete (import, analysis, hanging-piece detection, demo data).** The web app's shell (#50) is in place; the findings screen follows in #24.
+> Status: **v0.1.0: Phase 1 complete (import, analysis, hanging-piece detection, demo data).** Since then: the web app with a read-only findings screen (#50, #51, #24).
 
 ## The coaching loop
 
@@ -139,9 +139,9 @@ cd analysis-service && docker build --target test -t analysis-test . && docker r
 
 ### Web app
 
-![The app shell in the dark theme: the board in the starting position, the legend and keyboard hint under it, and the side panel with "No findings yet"](docs/images/frontend-shell-dark.png)
+![The findings screen in the dark theme: a demo game seen from Black, the move 18… Rb6 as an orange arrow, the capturing knight marked in blue; on the right the blind-spot report (hanging piece in 5 of the last 20 rapid games, a pattern), the list of findings and the selected finding's facts](docs/images/findings-screen-dark.png)
 
-Dark is the default; the toggle in the header switches to the light theme and the choice is remembered. For frontend development without Docker (Node 26, the version in `frontend/.nvmrc`), see [frontend](frontend/README.md).
+The findings screen (#24): the blind-spot report, your findings, and for the selected one the board before your move, the evidence line to step through (chips, arrow keys), the engine's best move on request, the game's moves and how the finding was produced. Each finding has its own address (`/findings/:id`). Dark is the default; the toggle in the header switches to the light theme and the choice is remembered. For frontend development without Docker (Node 26, the version in `frontend/.nvmrc`), see [frontend](frontend/README.md).
 
 ### Read API
 

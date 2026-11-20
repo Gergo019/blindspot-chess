@@ -8,6 +8,7 @@ BlindSpot's own code is under the [MIT licence](LICENSE), except `analysis-servi
 |---|---|---|---|
 | [react-chessboard](https://github.com/Clariity/react-chessboard) | 5.12.1 | MIT, Copyright (c) 2022 Ryan Gregory | The board component. |
 | Chess pieces, "Cburnett" set | as bundled in react-chessboard 5.12.1 | BSD licence (one of the licences the author offers) | Chess piece SVGs by **Colin M. L. Burnett** ([User:Cburnett](https://commons.wikimedia.org/wiki/User:Cburnett)), from [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Chess_plt45.svg), where they are offered under GFDL, BSD or GPL. BlindSpot uses them under the BSD licence. react-chessboard bundles them as its default pieces without naming them; the match was checked against the Commons files (ADR 0007). |
+| [chess.js](https://github.com/jhlywa/chess.js) | 1.4.0 | BSD-2-Clause, Copyright (c) 2025, Jeff Hlywa | Derives SAN and positions from FEN and UCI for display (#24). |
 | [Inter](https://rsms.me/inter/) via [@fontsource-variable/inter](https://fontsource.org/fonts/inter) | 5.3.0 | SIL Open Font License 1.1, Copyright (c) 2016 The Inter Project Authors | Self-hosted font files, no requests to font CDNs. |
 | [React](https://react.dev/) and React DOM | 19.3.1 | MIT, Copyright (c) Meta Platforms, Inc. and affiliates | |
 | [@dnd-kit](https://dndkit.com/) (dependency of react-chessboard) | see `frontend/package-lock.json` | MIT, Copyright (c) 2021 Claudéric Demers | |

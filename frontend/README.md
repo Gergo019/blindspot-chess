@@ -2,11 +2,15 @@
 
 The BlindSpot web app: React 19 + TypeScript (strict), built with Vite. Design decisions: [ADR 0007](../docs/decisions/0007-frontend-board-and-visual-identity.md).
 
-So far it is the **app shell** (#50): header and navigation, the board (react-chessboard, starting position), the legend and keyboard hint, an empty side panel, and the dark and light theme. The findings screen comes in #24, backed by the read-only API of #51.
+It shows the **findings screen** (#24) on the read-only API (#51): the blind-spot report, the findings (newest first, paged; each at `/findings/:id`), and for the selected finding the board before the move with your move in orange and the evidence in blue, the evidence line as SAN chips (derived from FEN and UCI with chess.js), the engine's best move on request, the game's moves with their classification, and the engine and detector that produced it.
 
-| Dark (default)                                                   | Light                                                              |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------ |
-| ![App shell, dark theme](../docs/images/frontend-shell-dark.png) | ![App shell, light theme](../docs/images/frontend-shell-light.png) |
+| Dark (default)                                                          | Light                                                                                                      |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| ![Findings screen, dark theme](../docs/images/findings-screen-dark.png) | ![Findings screen, light theme, one move into the evidence line](../docs/images/findings-screen-light.png) |
+
+**Keyboard:** ← → step through the evidence line (or, after choosing a move in the move list, through the game), Home and End jump to its start and end. The findings, the chips and the moves are buttons, reachable with Tab.
+
+**Structure:** `src/api/` is the only code that talks to the backend (typed, same-origin `/api`, errors carry the status and never the server's text); `src/chess/notation.ts` derives SAN and positions; `src/findings/` is the screen; `src/findings/factRenderers.ts` gives every fact type the API can return a label and its board marks (ADR 0007), checked by a test; `src/components/EvidenceBoard.tsx` draws the board with ringed squares and haloed arrows.
 
 ## Run it
 
