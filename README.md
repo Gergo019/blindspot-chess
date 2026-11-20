@@ -149,7 +149,7 @@ The backend serves a read-only JSON API under `/api` ([#51](https://github.com/G
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/patterns` | The blind-spot report: for every motif, in how many distinct games among the last 20 analysed rapid games it occurred, the sample size (always given, also below the threshold) and whether it reaches the pattern threshold of 3 games |
+| `GET /api/patterns` | The blind-spot report: for every motif that has a detector (motifs without one, such as the knight fork until #26, are left out rather than shown as 0), in how many distinct games among the last 20 analysed rapid games it occurred, the sample size (always given, also below the threshold) and whether it reaches the pattern threshold of 3 games |
 | `GET /api/findings?motif=&page=&size=` | Findings, newest game first. `motif` is `HANGING_PIECE` or `ALLOWED_KNIGHT_FORK` (optional); `page` from 0; `size` 1 to 50 (default 20) |
 | `GET /api/findings/{id}` | One finding with what the board needs: `fenBefore`, the move `played` (UCI and SAN) and the engine's `best` move (UCI), the `evidenceLineUci` (continuing after the played move), the checked `facts`, the engine settings, the game (opponent, date, colour, Lichess link) and `explanation`, which is null unless a TEMPLATE explanation passed verification |
 | `GET /api/games/{id}/moves` | The game's half-moves with the engine's classification, for the move list |

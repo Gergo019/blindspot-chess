@@ -48,7 +48,6 @@ export function FindingList({ state, selectedId, onSelect, onPage, onRetry }: Pr
               <span className="finding-row__main">
                 {MOTIF_LABEL[f.motif]}: {f.facts.piece ?? "piece"}
                 {f.facts.square ? ` on ${f.facts.square}` : ""}
-                {f.facts.materialLost !== null ? `, −${String(f.facts.materialLost)}` : ""}
               </span>
               <span className="finding-row__meta">
                 {numbered(f.moveNumber, f.side, f.played.san ?? f.played.uci)} ·{" "}

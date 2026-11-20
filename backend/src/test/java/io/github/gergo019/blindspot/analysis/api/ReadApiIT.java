@@ -254,14 +254,27 @@ class ReadApiIT {
         }
 
         @Test
-        void everyMotifIsListedEvenWithoutFindings() throws Exception {
+        void everyMotifWithADetectorIsListedEvenWithoutFindings() throws Exception {
             doneRapid(player, 1);
 
             JsonNode report = get("/api/patterns");
-            assertThat(report.get("motifs")).hasSize(Motif.values().length);
-            JsonNode fork = pattern(report, Motif.ALLOWED_KNIGHT_FORK);
-            assertThat(fork.get("gamesWithFinding").asInt()).isZero();
-            assertThat(fork.get("sampleSize").asInt()).isEqualTo(1);
+            JsonNode hanging = pattern(report, Motif.HANGING_PIECE);
+            assertThat(hanging.get("gamesWithFinding").asInt()).isZero();
+            assertThat(hanging.get("sampleSize").asInt()).isEqualTo(1);
+            assertThat(hanging.get("pattern").asBoolean()).isFalse();
+        }
+
+        @Test
+        void motifsWithoutADetectorAreLeftOutEvenWithFindingsInTheData() throws Exception {
+            // No knight-fork detector exists yet (#26), so "0 of 20" would read as "you never allow forks".
+            IntStream.rangeClosed(1, 3).forEach(i -> finding(doneRapid(player, i), 7, Motif.ALLOWED_KNIGHT_FORK));
+
+            JsonNode report = get("/api/patterns");
+            List<String> listed = new ArrayList<>();
+            report.get("motifs").forEach(m -> listed.add(m.get("motif").asString()));
+            assertThat(listed).containsExactly("HANGING_PIECE");
+            assertThat(Motif.ALLOWED_KNIGHT_FORK.hasDetector()).isFalse();
+            assertThat(Motif.HANGING_PIECE.hasDetector()).isTrue();
         }
 
         @Test

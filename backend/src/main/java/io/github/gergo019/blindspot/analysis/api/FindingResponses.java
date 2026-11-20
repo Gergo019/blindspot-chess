@@ -65,7 +65,10 @@ public final class FindingResponses {
     public record Explanation(String content) {
     }
 
-    /** The blind-spot report: per motif, distinct games with a finding among the last eligible games. */
+    /**
+     * The blind-spot report: per motif, distinct games with a finding among the last eligible games. Only
+     * motifs with a detector are listed; a motif nothing looked for is omitted rather than shown as zero.
+     */
     public record PatternReport(int window, int threshold, int sampleSize, List<MotifPattern> motifs) {
     }
 

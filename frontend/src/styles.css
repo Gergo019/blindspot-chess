@@ -393,6 +393,12 @@ kbd {
   margin: 0;
 }
 
+.facts__hint {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

@@ -93,10 +93,8 @@ export function patterns(gamesWithFinding: number, sampleSize = 20): PatternRepo
     window: 20,
     threshold: 3,
     sampleSize,
-    motifs: [
-      { motif: "ALLOWED_KNIGHT_FORK", gamesWithFinding: 0, sampleSize, pattern: false },
-      { motif: "HANGING_PIECE", gamesWithFinding, sampleSize, pattern: gamesWithFinding >= 3 },
-    ],
+    // Only motifs with a detector, as the API sends them (no knight-fork detector yet, #26).
+    motifs: [{ motif: "HANGING_PIECE", gamesWithFinding, sampleSize, pattern: gamesWithFinding >= 3 }],
   };
 }
 

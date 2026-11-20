@@ -24,6 +24,9 @@ describe("Your blind spot", () => {
     const hanging = within(card).getByText("Hanging piece").closest("li");
     expect(hanging).toHaveTextContent("in 2 of your last 20 rapid games");
     expect(hanging).toHaveTextContent("Below the pattern threshold of 3 games, so not a pattern yet.");
+    // Only motifs the API lists: no placeholder line for a motif without a detector.
+    expect(within(card).queryByText("Allowed knight fork")).not.toBeInTheDocument();
+    expect(within(card).getAllByRole("listitem")).toHaveLength(1);
   });
 
   it("calls three or more games a pattern", async () => {
@@ -165,7 +168,11 @@ describe("Facts, explanation and footer", () => {
     mockHappyApi();
     await openFinding();
     expect(screen.getByText("Captured by").nextSibling).toHaveTextContent("queen");
-    expect(screen.getByText("Material lost").nextSibling).toHaveTextContent("1 point");
+    const lost = screen.getByText("Material lost compared with the best move").nextSibling;
+    expect(lost).toHaveTextContent("1 point");
+    expect(lost).toHaveTextContent(
+      "How far your line ends behind the engine's best line over the same moves",
+    );
     expect(screen.queryByRole("heading", { name: "Why" })).not.toBeInTheDocument();
     expect(
       screen.getByText(/Stockfish 19, depth 16, 1 thread, 64 MB hash · detector hanging-0.4/),

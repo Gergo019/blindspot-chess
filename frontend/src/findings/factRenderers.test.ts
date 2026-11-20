@@ -32,4 +32,22 @@ describe("fact renderers (ADR 0007)", () => {
     expect(keys).not.toContain("materialLost");
     expect(keys).not.toContain("mystery");
   });
+
+  it("says what the material loss measures: against the best line, or in an exchange on the square", () => {
+    // 4. Nxe5 is a capture, but the reply Qg5 does not recapture on e5: rule 3, against the best line.
+    const best = renderFacts(FACTS, { line }).find((f) => f.key === "materialLost");
+    expect(best?.label).toBe("Material lost compared with the best move");
+    expect(best?.hint).toContain("includes what the best move would have won");
+
+    // 3. Nxd5 exd5: the opponent recaptures on d5, so only the exchange on d5 is judged (rule 2).
+    const exchangeLine = playLine("rnbqkbnr/ppp2ppp/4p3/3p4/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 0 3", [
+      "c3d5",
+      "e6d5",
+    ]);
+    const exchange = renderFacts({ ...FACTS, square: "d5", materialLost: 2 }, { line: exchangeLine }).find(
+      (f) => f.key === "materialLost",
+    );
+    expect(exchange?.label).toBe("Material lost in the exchange on d5");
+    expect(exchange?.value).toBe("2 points");
+  });
 });
