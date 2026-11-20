@@ -4,6 +4,37 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-20: Hold TypeScript 7 updates, GPL-3.0-or-later for the analysis service (PR #59)
+
+**Goal:** Two follow-ups from #50 before #51: unblock Dependabot's grouped npm PR (#58), and settle the licence question raised there (python-chess is GPL and imported by the analysis service).
+
+**Changes:**
+- `.github/dependabot.yml` (npm, `/frontend`): ignore `typescript` major updates, with the reason and "remove when typescript-eslint supports TypeScript 7".
+- `analysis-service/LICENSE`: the GPL version 3 text from gnu.org (SHA-256 `3972dc97…`). It is identical, apart from whitespace, to the `COPYING.txt` that ships with Stockfish in the image.
+- Licence notes: a "Licence" section in `analysis-service/README.md`, the root README's licence section split by directory, `THIRD_PARTY_NOTICES.md` (intro and the python-chess row), and an **amendment section in ADR 0002**. No other ADR was edited.
+- Docs fix on the side: in `analysis-service/README.md` the "needs a Stockfish binary, set `STOCKFISH_PATH`" paragraph had ended up after "Golden files" (#33). It is back under "Run locally without Docker", where it belongs.
+- CHANGELOG.
+- Deleted the remote branch `feat/50-frontend-scaffold`, which a push after #54's merge had re-created (fully merged, approved).
+
+**Decisions:**
+- **Why #58 failed:** Dependabot grouped `typescript` 6.0.3 → 7.0.2 with `typescript-eslint` 8.72.1 → 8.73.0. typescript-eslint 8.73.0 still declares `typescript: ">=4.8.4 <6.1.0"` (npm registry), so `npm ci` stops with ERESOLVE ("While resolving: typescript-eslint@8.73.0, Found: typescript@7.0.2"). Ignoring only TypeScript's *major* updates keeps 6.0.x patches and every other update flowing. The alternative, `--legacy-peer-deps`, was rejected: it would hide the incompatibility and break type-aware linting.
+- **The analysis service is GPL-3.0-or-later; everything else stays MIT.** python-chess 1.11.2 declares `License: GPL-3.0+` (classifier "GPLv3 or later") and is imported into the service's code, so the service is a work based on it. The backend and the frontend only call it over HTTP and contain none of its code, so they stay MIT, the same separation that already covers Stockfish. Details are in the ADR 0002 amendment.
+- **"or later":** the request said "GPL-3.0". The SPDX identifier `GPL-3.0` is deprecated because it leaves the version question open. I chose `GPL-3.0-or-later` to match python-chess's own terms. `GPL-3.0-only` would also be compatible; switching is a one-line change in the README and notices (the LICENSE text is the same).
+- **Rewriting on an MIT chess library was rejected:** python-chess's PGN parsing, move generation and UCI handling are what the service is built on.
+
+**Verification:**
+- #58's failing job log: `npm error ERESOLVE could not resolve … While resolving: typescript-eslint@8.73.0 … Found: typescript@7.0.2`.
+- `dependabot.yml` parses; the npm entry has the new ignore rule.
+- GPL text: `diff -w` against Stockfish's `COPYING.txt` from the analysis-service image shows no difference.
+- CI on PR #59, green on the first run: Frontend 22 s, Backend 1m50s, Analysis service 1m54s, Docker Compose stack 1m15s.
+- After merge: `@dependabot recreate` on #58 (or closing it for a fresh Dependabot PR). Its result is reported on #58 and recorded in the next devlog entry, since it can only happen once this PR is on `main`.
+
+**Open points / risks:**
+- When typescript-eslint supports TypeScript 7, remove the ignore rule and upgrade TypeScript (and check the `tsconfig` options).
+- ADR 0007's "the project's own code stays MIT" now reads as "the frontend stays MIT"; per the instruction, ADR 0007 was not edited, and the ADR 0002 amendment is the record.
+
+**Links:** [#58](https://github.com/Gergo019/blindspot-chess/pull/58), [PR #59](https://github.com/Gergo019/blindspot-chess/pull/59), [ADR 0002](decisions/0002-python-analysis-service.md#amendment-2026-11-20-licence-of-the-analysis-service), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)
+
 ## 2026-11-20: Frontend scaffold, theme and app shell (#50 / PR #54)
 
 **Goal:** The foundation of the web app (ADR 0007): a strict React + TypeScript build with lint, tests and CI, the dark and light theme with tested contrast, the app shell with a working board, and an nginx container in the Compose stack. No API calls and no findings yet (#51, #24).

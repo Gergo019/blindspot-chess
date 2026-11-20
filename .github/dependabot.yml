@@ -27,6 +27,12 @@ updates:
     groups:
       all:
         patterns: ["*"]
+    ignore:
+      # TypeScript 7 breaks type-aware linting: typescript-eslint 8.73 supports only
+      # typescript ">=4.8.4 <6.1.0", so a grouped PR with TypeScript 7 fails `npm ci` (ERESOLVE, #58).
+      # Remove when typescript-eslint supports TypeScript 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
