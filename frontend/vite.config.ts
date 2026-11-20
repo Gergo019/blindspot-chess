@@ -10,6 +10,8 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Unit and component tests only; the Playwright end-to-end tests in e2e/ run with `npm run e2e`.
+    include: ["src/**/*.test.{ts,tsx}"],
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: true,
