@@ -6,11 +6,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- `analysis-service/LICENSE`: the analysis service is GPL-3.0-or-later because it imports python-chess (GPL-3.0-or-later); the backend, the frontend and the rest of the repository stay MIT ([ADR 0002, amendment](docs/decisions/0002-python-analysis-service.md#amendment-2026-11-20-licence-of-the-analysis-service))
 - Web app shell (#50): React 19 + TypeScript (strict) with Vite, ESLint, Prettier and Vitest; header with Findings / Games / Drills (disabled), the board (react-chessboard, starting position) with legend and keyboard hint, an empty side panel, and a dark (default) and light theme remembered per browser. A unit test checks WCAG AA contrast for every theme colour pair; board highlights are rings between dark halo rings because the meaning colours fail as fills (ADR 0007). Served by nginx (non-root, pinned by digest) on port 8081 with `/api` proxied to the backend; a `frontend` service in Docker Compose with a healthcheck; CI job "Frontend (lint + test + build)"; Dependabot for npm
 - `THIRD_PARTY_NOTICES.md`: licences of the bundled piece set (Cburnett, BSD), font (Inter, OFL-1.1), libraries and Stockfish
 
 ### Changed
 
+- Dependabot holds TypeScript major updates for the frontend: typescript-eslint supports only TypeScript below 6.1, so TypeScript 7 broke the grouped npm PR (#58)
 - Roadmap: the read-only findings screen comes before Phase 2's detectors; frontend decisions (react-chessboard, licences, layout, theme) recorded in [ADR 0007](docs/decisions/0007-frontend-board-and-visual-identity.md) (#49)
 
 ## [0.1.0] - 2026-11-16

@@ -160,4 +160,8 @@ All work follows the [golden rules](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE). Stockfish is GPL-3.0 and runs as a separate program; it is not linked into this code. Third-party software, the chess pieces and the font are listed with their licences in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- `backend/`, `frontend/` and everything else: [MIT](LICENSE).
+- `analysis-service/`: [GPL-3.0-or-later](analysis-service/LICENSE), because it imports python-chess (GPL-3.0-or-later). The backend and the frontend only call it over HTTP, so they stay MIT ([ADR 0002, amendment](docs/decisions/0002-python-analysis-service.md#amendment-2026-11-20-licence-of-the-analysis-service)).
+- Stockfish is GPL-3.0 and runs as a separate program inside the analysis service's image.
+
+Third-party software, the chess pieces and the font are listed with their licences in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
