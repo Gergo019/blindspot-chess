@@ -4,7 +4,11 @@
 
 BlindSpot finds a mistake you keep making in your own games, lets you practise it on the positions where it happened, and then checks whether the lesson carries over to positions you have never seen.
 
-> Status: **v0.1.0: Phase 1 complete (import, analysis, hanging-piece detection, demo data).** Since then: the web app with a read-only findings screen (#50, #51, #24).
+> Status: **v0.2.0: the web app.** A read-only findings screen on a read-only API, on top of Phase 1's import, analysis, hanging-piece detection and demo data (v0.1.0); tested end to end in a real browser, with the product rules written as Cucumber features. Next: the knight-fork detector (#26). No drills yet.
+
+![The findings screen in the dark theme: a demo game seen from Black, the move 18… Rb6 as an orange arrow, the capturing knight marked in blue; on the right the blind-spot report (hanging piece in 5 of the last 20 rapid games, a pattern), the list of findings and the selected finding's facts](docs/images/findings-screen-dark.png)
+
+*Your repeated mistake on a board: the move you played in orange, the line that punishes it in blue, and how often it happened in your recent games.*
 
 ## The coaching loop
 
@@ -98,7 +102,7 @@ docker compose up --build
 | Analysis service | no published port; only the backend calls it, on the Compose network. Its health (the pinned Stockfish version, depth, threads and hash size): `docker compose exec analysis-service python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read().decode())"`. `POST /analyze`: see [analysis-service](analysis-service/README.md) |
 | PostgreSQL | `localhost:5432` (db/user/password from `.env`) |
 
-**Demo (the default in `.env.example`):** `SPRING_PROFILES_ACTIVE=demo` loads 20 real rapid games from the [Lichess open database](https://database.lichess.org/) (January 2013, CC0) for a fictional player `demo` on the first start. The background analysis then works through them one at a time, in about 3 to 4 minutes. Afterwards the database holds 20 analysed games, with hanging-piece findings in 5 of them (`hanging-0.4`). No Lichess account or token is needed, and the demo profile never calls the Lichess API. To look at the findings:
+**Demo (the default in `.env.example`):** `SPRING_PROFILES_ACTIVE=demo` loads 20 real rapid games from the [Lichess open database](https://database.lichess.org/) (January 2013, CC0) for a fictional player `demo` on the first start. The background analysis then works through them one at a time, in about 4 to 8 minutes depending on the machine (7.5 minutes measured on a fresh clone for v0.2.0, about 6 in CI). Afterwards the database holds 20 analysed games, with hanging-piece findings in 5 of them (`hanging-0.4`). No Lichess account or token is needed, and the demo profile never calls the Lichess API. **Open http://localhost:8081** to see the findings: the blind-spot report and the list fill in as the games are analysed. To look at them in the database instead:
 
 ```bash
 docker compose exec db psql -U blindspot -d blindspot -c \
@@ -139,9 +143,7 @@ cd analysis-service && docker build --target test -t analysis-test . && docker r
 
 ### Web app
 
-![The findings screen in the dark theme: a demo game seen from Black, the move 18… Rb6 as an orange arrow, the capturing knight marked in blue; on the right the blind-spot report (hanging piece in 5 of the last 20 rapid games, a pattern), the list of findings and the selected finding's facts](docs/images/findings-screen-dark.png)
-
-The findings screen (#24): the blind-spot report, your findings, and for the selected one the board before your move, the evidence line to step through (chips, arrow keys), the engine's best move on request, the game's moves and how the finding was produced. Each finding has its own address (`/findings/:id`). Dark is the default; the toggle in the header switches to the light theme and the choice is remembered. For frontend development without Docker (Node 26, the version in `frontend/.nvmrc`), see [frontend](frontend/README.md).
+The findings screen (#24, screenshot at the top): the blind-spot report, your findings, and for the selected one the board before your move, the evidence line to step through (chips, arrow keys), the engine's best move on request, the game's moves and how the finding was produced. Each finding has its own address (`/findings/:id`). Dark is the default; the toggle in the header switches to the light theme and the choice is remembered. For frontend development without Docker (Node 26, the version in `frontend/.nvmrc`), see [frontend](frontend/README.md).
 
 ### End-to-end tests
 
@@ -194,13 +196,15 @@ users ──< chess_accounts ──< games ──< move_evaluations ──< mist
 
 ## Roadmap
 
-**Next, in this order** (decided 2026-11-16, [ADR 0007](docs/decisions/0007-frontend-board-and-visual-identity.md)): the read-only findings screen comes before Phase 2's detectors, so the existing findings can be seen and checked on a board, and the React frontend exists in the repo. ADR 0007 ([#49](https://github.com/Gergo019/blindspot-chess/issues/49)) → frontend scaffold and theme ([#50](https://github.com/Gergo019/blindspot-chess/issues/50)) → findings and patterns API ([#51](https://github.com/Gergo019/blindspot-chess/issues/51)) → findings screen ([#24](https://github.com/Gergo019/blindspot-chess/issues/24)) → Playwright tests ([#52](https://github.com/Gergo019/blindspot-chess/issues/52)) → one or two Cucumber scenarios → knight-fork detector ([#26](https://github.com/Gergo019/blindspot-chess/issues/26)).
+**v0.2.0** (2026-11-21) brought the read-only findings screen forward, before Phase 2's detectors, so the existing findings can be seen and checked on a board ([ADR 0007](docs/decisions/0007-frontend-board-and-visual-identity.md)): ADR 0007 ([#49](https://github.com/Gergo019/blindspot-chess/issues/49)) ✓ → frontend scaffold and theme ([#50](https://github.com/Gergo019/blindspot-chess/issues/50)) ✓ → findings and patterns API ([#51](https://github.com/Gergo019/blindspot-chess/issues/51)) ✓ → findings screen ([#24](https://github.com/Gergo019/blindspot-chess/issues/24)) ✓ → Playwright tests ([#52](https://github.com/Gergo019/blindspot-chess/issues/52)) ✓ → Cucumber features for the product rules ✓.
+
+**Next:** the knight-fork detector ([#26](https://github.com/Gergo019/blindspot-chess/issues/26)), then the cause and defence facts for hanging pieces ([#34](https://github.com/Gergo019/blindspot-chess/issues/34)).
 
 - [x] **Phase 1, pipeline** (v0.1.0): background import of recent completed Lichess rapid games (bounded, deduplicated by game id) ✓, `POST /analyze` with pinned Stockfish ✓, background analysis of imported games ✓, seeded demo data from the open database ✓. **Done when** CI sends one known finished game through backend → analysis service → Stockfish and asserts the expected motif comes back with a replayable line.
 - [ ] **Phase 2, findings**: detectors for the two motifs with evidence lines, the pattern report and its evidence threshold
-- [ ] **Phase 3, practice**: board-first React screen (started early, see above), own-game and transfer drills, Playwright tests
+- [ ] **Phase 3, practice**: board-first React screen ✓ (v0.2.0), Playwright tests ✓ (v0.2.0), own-game and transfer drills
 - [ ] **Phase 4, explanations**: typed claims and templates, then the `LLM_FREE` / `LLM_FACTS` experiment and its evaluation report
-- [ ] **Phase 5, operations**: Cucumber acceptance suite (first scenarios after the Playwright tests), Kubernetes manifests, hosted demo
+- [ ] **Phase 5, operations**: Cucumber acceptance suite (product-rule features ✓ in v0.2.0), Kubernetes manifests, hosted demo
 
 ## Contributing
 

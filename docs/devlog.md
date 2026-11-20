@@ -4,6 +4,46 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-21: Release v0.2.0 (PR #PRNUM)
+
+**Goal:** Tag the web app as v0.2.0: everything since v0.1.0, with the README showing the product as it is today and a quick start that works on a fresh clone.
+
+**What v0.2.0 delivers** (since v0.1.0 on 2026-11-16):
+- **The web app** (#50, #51, #24): a read-only findings screen on a read-only API.
+  - the blind-spot report with its sample size;
+  - the findings with their own URLs;
+  - the board before the mistake, with your move in orange and the evidence in blue;
+  - the evidence line in SAN, stepped by click or keyboard;
+  - the best move on request, the game's moves, and the engine and detector behind each finding.
+- **Tests that prove it:** Playwright end to end against the real stack with the demo data, including axe in both themes (#52), and the product rules as Cucumber features (#68).
+- **Security** (#60, #62): local-only ports, the analysis service unpublished, tested security headers with a CSP, `SECURITY.md` with private reporting, least-privilege CI with actions pinned by SHA, and API errors without internals.
+- **Licences** (#59): the analysis service is GPL-3.0-or-later (python-chess); everything else stays MIT. `THIRD_PARTY_NOTICES.md` lists every bundled asset.
+
+**Changes in this PR:**
+- `CHANGELOG.md`: Unreleased moved to `[0.2.0] - 2026-11-21`, with a one-line summary, and grouped as **Added / Changed / Security**:
+  - **Security:** `SECURITY.md`, local-only ports, the security headers, the API's error handling, and the CI permissions and pins;
+  - **Changed:** the licence entry, which moved out of Added, and the JUnit 6.1.3 alignment.
+  - Compare links for 0.2.0 and Unreleased.
+- `README.md`:
+  - the status line for v0.2.0;
+  - the dark findings-screen screenshot directly under it, with one line on what it shows (it moved there from the "Web app" section);
+  - the roadmap with the v0.2.0 steps ticked and "Next: #26, then #34";
+  - the demo paragraph now says to open http://localhost:8081 (the SQL query stays as an alternative);
+  - the analysis time corrected from "3 to 4 minutes" to "4 to 8 minutes" (measured below).
+- **#68's devlog entry and CHANGELOG line** are included: #68 was merged on 6eed5a2 before that docs commit was pushed, so it is cherry-picked here, with #68's CI result filled in.
+
+**Verification:**
+- **Quick start on a fresh clone of `main` (2eac4e9)**, exactly as documented (`cp .env.example .env && docker compose up --build`, run detached). The only addition was `COMPOSE_PROJECT_NAME=blindspot-fresh`, so the clone got its own database volume instead of the existing local demo volume.
+  - The stack was up after 3 min 28 s (cold image builds), with http://localhost:8081 serving `<title>BlindSpot</title>`.
+  - The demo analysis was complete 11 min after the start, about 7.5 min after the stack was up: 20 games, hanging piece in 5, a pattern. That is why the README's time estimate changed.
+  - "Open localhost:8081", checked in a real browser: the **Playwright suite ran against this fresh stack: 10 passed** (including axe in both themes and no CSP violations).
+  - The throwaway stack and its volume were removed afterwards (`docker compose down -v` with that project name only).
+- CI on PR #PRNUM: CI_RESULT
+
+**After merge:** an annotated tag `v0.2.0` on the merge commit and a GitHub release "v0.2.0" with the CHANGELOG section as notes.
+
+**Links:** [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [CHANGELOG 0.2.0](../CHANGELOG.md), [v0.1.0](https://github.com/Gergo019/blindspot-chess/releases/tag/v0.1.0)
+
 ## 2026-11-20: Product rules as Cucumber features (PR #68)
 
 **Goal:** Write the rules that decide what a player sees as readable specifications that are also tests: the pattern threshold, verified explanations only, and no report for mistakes without a detector (ADR 0007's plan: one or two Cucumber scenarios after Playwright).
@@ -33,11 +73,12 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - run 2: showing templates that failed instead of those that passed. 3 failures (the failed-template example, the several-explanations scenario, and the passed-template scenario).
   The working tree was clean after each revert.
 - Full `mvn verify` with JUnit 6.1.3: **77 unit tests and 83 integration tests** (the 65 existing ITs plus the 18 scenarios), all green.
-- CI on PR #68: CI_RESULT
+- CI on PR #68 (merged commit 6eed5a2), all five jobs green: Backend 2m14s (83 integration tests, of which `BusinessRulesIT` 18), Analysis service 1m36s, Frontend 30 s, Docker Compose stack 1m23s, End-to-end (Playwright) 5m20s. This entry and the CHANGELOG line were pushed after the merge and reached `main` with the v0.2.0 release PR.
 
 **Open points / risks:**
 - When #26 adds the knight-fork detector, `undetected_motifs.feature` changes with it (the motif is then reported).
 - The JUnit override must be revisited with the next Spring Boot upgrade.
+- Cucumber warns that `@SelectClasspathResource("features")` should be `@SelectPackages("features")`; harmless, change it in the next PR that touches the features.
 
 **Links:** [PR #68](https://github.com/Gergo019/blindspot-chess/pull/68), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [Cucumber-JVM](https://github.com/cucumber/cucumber-jvm)
 
