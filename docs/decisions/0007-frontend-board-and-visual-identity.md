@@ -1,7 +1,7 @@
 # 0007: Frontend: board component, licences and visual identity
 
 - Status: accepted
-- Date: 2026-11-16 (#49)
+- Date: 2026-11-16 (#49), updated 2026-11-20 (highlight style and contrast results, #50)
 
 ## Context
 
@@ -50,6 +50,21 @@ The layout below comes from a design mockup agreed on 2026-11-16. The mockup is 
 - **Dark theme by default, light theme as an option**, remembered per browser. Colours are design tokens (CSS custom properties), so both themes share one set of components.
 - A muted, neutral palette with **one accent colour for "your mistake": orange `#F0883E`**. Evidence is **blue: `#58A6FF` in the dark theme, `#1F6FEB` in the light theme**. No other saturated colours compete with these two.
 - Text meets WCAG AA in both themes. Arrows and square highlights are checked for at least 3:1 contrast against both square colours (WCAG 1.4.11, non-text contrast); if a colour falls short on some square, the scaffold (#50) adjusts how that highlight is drawn (for example with an outline) without changing the two colours, and records the result here.
+
+### Result of the contrast check (#50)
+
+The scaffold tests every pair with `frontend/src/theme/contrast.test.ts`. The two meaning colours fail as a plain fill on the blue-grey squares, so **highlights are drawn as rings, not fills**: the orange or blue ring sits between two dark halo rings (`--halo`, #0B0D10 in both themes), so the halo meets the square and the colour meets the halo. The colours themselves are unchanged. Legend swatches use the same halo outline.
+
+| Pair | Needed | Dark | Light |
+|---|---|---|---|
+| orange on light / dark square, plain fill (not used) | 3 | 1.24 / 1.63 | 1.87 / 1.02 |
+| blue on light / dark square, plain fill (not used) | 3 | 1.24 / 1.63 | 3.41 / 1.79 |
+| halo on light / dark square | 3 | 9.52 / 4.72 | 14.34 / 7.50 |
+| orange on halo | 3 | 7.69 | 7.69 |
+| blue on halo | 3 | 7.70 | 4.20 |
+| coordinates on light / dark square | 4.5 | 9.52 / 4.72 | 14.34 / 7.50 |
+
+Text, muted text and disabled text pass 4.5:1 on every background in both themes (lowest: 4.61, disabled text on the raised surface), and the focus ring passes 3:1 (lowest: 4.09). The full table is in the devlog entry of #50.
 
 ## Consequences
 

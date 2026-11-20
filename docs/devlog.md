@@ -4,6 +4,62 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-20: Frontend scaffold, theme and app shell (#50 / PR #54)
+
+**Goal:** The foundation of the web app (ADR 0007): a strict React + TypeScript build with lint, tests and CI, the dark and light theme with tested contrast, the app shell with a working board, and an nginx container in the Compose stack. No API calls and no findings yet (#51, #24).
+
+**Changes:**
+- `frontend/`: Vite 8, React 19.3, TypeScript 6.0 (strict, plus `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`), ESLint 10 with typescript-eslint's strict type-checked rules and the React hooks rules, Prettier, Vitest 5 + Testing Library + jsdom. Exact versions in `package.json`, `package-lock.json` committed. Node pinned to **26.13.1** in `.nvmrc` and `"engines": ">=26.13.1 <27"`.
+- **Theme:** every colour is a CSS custom property in `src/theme/theme.css`, one block per theme, switched by `data-theme` on `<html>`. Dark is the default; the choice is stored in `localStorage` (`blindspot.theme`). An inline script in `index.html` applies it before the first paint. Every storage access is in try/catch, including touching `localStorage` itself, which throws in some browsers with site data blocked. Inter is self-hosted from `@fontsource-variable/inter`, so there are no requests to font CDNs.
+- **Contrast test** (`src/theme/contrast.test.ts`, 40 checks): it parses `theme.css` and checks text, muted and disabled text on all three backgrounds (4.5:1), coordinates on both squares (4.5:1), the focus ring on all backgrounds (3:1), and the highlight halo on both squares plus the meaning colours on the halo (3:1), in both themes. It also checks that both themes define the same tokens and that the agreed meaning colours are unchanged.
+- **Highlight style** (`src/theme/highlight.ts`): an orange or blue ring between two dark halo rings, never a fill. A test pins that shape; ADR 0007 now records why.
+- **App shell:** a header with the name and mark, and navigation Findings / Games / Drills, with Drills disabled. The board column (max 760 px, about two thirds) and the side panel stack below 900 px. The theme toggle has an accessible name ("Switch to light theme"). react-chessboard 5.12.1 shows the starting position, read-only, with coordinates inside the edge squares and square colours taken from the tokens. The legend ("Your move", "Evidence line") and the keyboard hint sit under the board. The panel shows an empty state ("No findings yet" / "No games yet") instead of fake data.
+- **Serving:** `frontend/Dockerfile` has a Node 26 build stage and an nginx-unprivileged 1.30 runtime (uid 101, port 8080), both pinned by digest. `nginx/default.conf.template` provides `/healthz`, a single-page-app fallback, long caching for hashed assets, `no-cache` for `index.html`, and `nosniff`. `/api/` is proxied to `${BACKEND_ORIGIN}`, resolved per request through Docker's DNS, so nginx starts without the backend.
+- `docker-compose.yml`: a `frontend` service on `${FRONTEND_PORT:-8081}` with a healthcheck (busybox `wget` on `/healthz`). `FRONTEND_PORT` added to `.env.example`.
+- **CI:** a new job **"Frontend (lint + test + build)"** (setup-node from `.nvmrc`, `npm ci`, lint, Prettier check, type check, tests, build). The Compose job now also waits for the frontend's `/healthz`, checks that `/` serves the app, checks that `/api/proxy-check` through nginx gives the backend's own answer, and checks that Compose reports the frontend healthy.
+- **Dependabot:** `npm` in `/frontend` (weekly, grouped like the others), `/frontend` added to the docker entry, and Node major updates ignored (LTS upgrades are done by hand, like Java and Python).
+- `THIRD_PARTY_NOTICES.md`: react-chessboard, the Cburnett pieces (BSD option, author credited), Inter, React, dnd-kit, Stockfish, python-chess, Lichess open database. Copyright lines were copied from the packages' licence files.
+- README (web app URL, screenshot, licence pointer), `frontend/README.md`, ADR 0007 (contrast results), CHANGELOG.
+
+**Decisions:**
+- **Node 26, not 24.** The official release schedule (`nodejs/Release`, `schedule.json`) puts Node 26 "Lithium" in Active LTS since 2026-10-28; Node 24 entered maintenance on 2026-10-20. **26.13.1 (2026-11-10) is newer than the two-week age the project otherwise waits for**, but it is a security release (`"security": true` in nodejs.org's `index.json`); the previous one, 26.13.0, is not patched. All npm packages are the newest versions released before 2026-11-06.
+- **TypeScript 6.0.3, not 7.0.** typescript-eslint 8.72 supports TypeScript `>=4.8.4 <6.1.0`, so TypeScript 7 would break type-aware linting. Revisit when typescript-eslint supports 7.
+- **Highlights as rings, not the colours changed.** As a plain fill, orange and blue reach only 1.02 to 1.87:1 on the squares (blue on the light theme's light square: 3.41). Changing the meaning colours would break ADR 0007; a dark halo ring around the colour ring carries the contrast instead (4.20 to 14.34:1). The full table is below.
+- **Disabled text adjusted, not exempted.** WCAG exempts disabled controls, but the disabled "Drills" link should still be readable. The first `--text-disabled` reached only 4.13 to 4.42:1 on some backgrounds; it was nudged to `#848ea0` (dark) and `#646d79` (light), and the test treats it like other text.
+- **Port 8081, not 3000.** 3000 is a common default (Grafana uses it, and on the development Mac it was taken). 8081 sits next to the backend's 8080; 5173 stays free for `npm run dev`.
+- **The proxy check compares with the backend, not with a fixed body.** The same request straight to the backend must give the same status, and the body through nginx must be Spring's JSON naming the path. The first attempt compared whole bodies, which never match because of the timestamp. Before that, a 404 with `{"message":"Not found"}` turned out to come from Grafana on port 3000, which is what showed the port clash.
+- **The backend's name is resolved per request** (`resolver 127.0.0.11`, `resolver_timeout 2s`), because a fixed `proxy_pass http://backend:8080` makes nginx refuse to start whenever the backend is not resolvable. Outside Compose, `/api` answers 502 after 2 s instead.
+- **Navigation without a router yet.** Findings and Games switch the panel's empty state; routes come with real screens (#24).
+
+**Contrast results** (WCAG ratio; needed: 4.5 for text and coordinates, 3 for graphics):
+
+| Pair | Dark | Light |
+|---|---|---|
+| text on bg / surface / raised | 15.17 / 14.05 / 12.52 | 15.13 / 16.22 / 14.31 |
+| muted text on bg / surface / raised | 7.32 / 6.77 / 6.04 | 5.95 / 6.38 / 5.63 |
+| disabled text on bg / surface / raised | 5.59 / 5.18 / 4.61 | 4.89 / 5.24 / 4.62 |
+| coordinates on light / dark square | 9.52 / 4.72 | 14.34 / 7.50 |
+| focus ring on bg / surface / raised | 7.31 / 6.77 / 6.03 | 4.32 / 4.63 / 4.09 |
+| halo on light / dark square | 9.52 / 4.72 | 14.34 / 7.50 |
+| orange / blue on halo | 7.69 / 7.70 | 7.69 / 4.20 |
+| orange as fill on light / dark square (not used) | 1.24 / 1.63 | 1.87 / 1.02 |
+| blue as fill on light / dark square (not used) | 1.24 / 1.63 | 3.41 / 1.79 |
+
+**Verification:**
+- In the Node 26.13.1 container: `npm run lint`, `format:check` and `typecheck` are clean; `npm test` passes 4 files and 56 tests (40 contrast checks, theme storage including throwing and missing storage, the highlight shape, and the shell); `npm run build` gives 297 kB of JS (91 kB gzipped) plus the Inter subsets.
+- Image: `/healthz` answers `ok`; `/` serves the app; `/games` falls back to `index.html`; `Cache-Control: no-cache` and `nosniff` are set; it runs as `uid=101(nginx)`; without a backend, `/api` answers 502.
+- Full stack locally: frontend healthy; `/api/proxy-check` through nginx and straight to the backend both give Spring's 404 JSON with `"path":"/api/proxy-check"`.
+- Screenshots with headless Chrome against the stack (dark, light, and 420 px wide): the stored theme is applied, 32 pieces are on the board, and the font in use is Inter Variable. Dark and light are in `docs/images/`.
+- CI on PR #54: CI_RESULT
+
+**Open points / risks:**
+- **python-chess is GPL-3.0 and is imported by the analysis service's code**, unlike Stockfish, which runs as a separate program. ADR 0002 treats the analysis service as part of an MIT project. Whether that service must itself be GPL (it is a separate program from the backend and the frontend) needs a decision; it is listed accurately in `THIRD_PARTY_NOTICES.md` meanwhile.
+- No Content-Security-Policy yet. The inline theme script would need a hash; add it with the findings screen.
+- The halo is dark in both themes, which reads well on the board but looks heavy on the light panel; revisit when real highlights appear in #24.
+- The required status check "Frontend (lint + test + build)" has to be added to branch protection by hand.
+
+**Links:** [#50](https://github.com/Gergo019/blindspot-chess/issues/50), [PR #54](https://github.com/Gergo019/blindspot-chess/pull/54), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md), [Node release schedule](https://github.com/nodejs/Release)
+
 ## 2026-11-16: ADR 0007, frontend decisions, and UI before Phase 2 (#49 / PR #53)
 
 **Goal:** Settle the frontend's board component, licences, layout and theme before any frontend code, and record the new order of work.

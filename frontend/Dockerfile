@@ -1,0 +1,21 @@
+# Frontend image (#50): build with Node, serve the static files with nginx as a non-root user.
+# Both base images are pinned by digest (multi-platform index, so the same pin builds on amd64 CI
+# and arm64 Macs); Dependabot proposes digest updates as explicit PRs.
+
+# ---- Build ----
+# Node 26 is the Active LTS (since 2026-10-28); keep in step with .nvmrc and package.json "engines".
+FROM node:26.13.1-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c0161664a011f7ff6b0f1 AS build
+WORKDIR /app
+COPY package.json package-lock.json .nvmrc ./
+RUN npm ci --no-audit --no-fund
+COPY . .
+RUN npm run build
+
+# ---- Runtime ----
+# nginx-unprivileged runs as user nginx (uid 101) and listens on 8080.
+FROM nginxinc/nginx-unprivileged:1.30-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03 AS runtime
+ENV BACKEND_ORIGIN=http://backend:8080
+COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /app/dist /usr/share/nginx/html
+USER 101
+EXPOSE 8080
