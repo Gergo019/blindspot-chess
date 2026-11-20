@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-20: Read-only findings and patterns API (#51 / PR #PRNUM)
+## 2026-11-20: Read-only findings and patterns API (#51 / PR #63)
 
 **Goal:** Everything the findings screen (#24) needs, as a read-only JSON API under `/api`, with no N+1 queries, errors without internals, and the security items of #60 that belong to the API.
 
@@ -57,14 +57,14 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - `/api/findings/1`: Rb6 (ply 36) with `fenBefore`, best `c6d4`, a 6-move evidence line, Stockfish 19 at depth 16 with 1 thread and 64 MB, and `explanation: null`.
   - `/api/games/8/moves`: 39 moves, ply 36 BLUNDER.
   - `/api/docs`: OpenAPI 3.1.0 with the four paths; `POST /api/findings` gives 405.
-- CI on PR #PRNUM: CI_RESULT
+- CI on PR #63: CI_RESULT
 
 **Open points / risks:**
-- The report query reads up to 20 game ids per request and then one grouped count. Indexes on `games (account_id, played_at)` and `move_evaluations (game_id)` already cover it; revisit only with many users.
+- The report reads up to 20 game ids per request, then runs one grouped count. Existing indexes cover both (V1, checked): `games_account_played_at_idx` on `games (account_id, played_at DESC)`, the unique `(game_id, ply)` on `move_evaluations`, and the unique `(move_evaluation_id, motif)` on `mistake_findings`. Revisit only with many users.
 - `CurrentPlayer` looks the user up on every request (one indexed query); it goes away with sign-up.
 - `facts` are typed for HANGING_PIECE; a new fact type (#34) extends `Facts` together with its renderer in the frontend (ADR 0007).
 
-**Links:** [#51](https://github.com/Gergo019/blindspot-chess/issues/51), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [#60](https://github.com/Gergo019/blindspot-chess/issues/60), [springdoc-openapi](https://springdoc.org/)
+**Links:** [#51](https://github.com/Gergo019/blindspot-chess/issues/51), [PR #63](https://github.com/Gergo019/blindspot-chess/pull/63), [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [#60](https://github.com/Gergo019/blindspot-chess/issues/60), [springdoc-openapi](https://springdoc.org/)
 
 ## 2026-11-20: Local-only ports, least-privilege CI, pinned actions, SECURITY.md (PR #62)
 
