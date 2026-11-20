@@ -76,7 +76,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - **rule 2** (your move captures and the reply recaptures on the same square, which the frontend recognises from the line): "Material lost in the exchange on d5", hint "What you gave up on that square minus what you took back there".
   The findings list no longer shows a bare "−4". The hint is its own row spanning both columns, and long labels wrap (13em), after the first screenshot showed the value squeezed into a one-word column. Tests cover both labels (exchange fixture: 3. Nxd5 exd5) and the hint row.
 - Verification of the fixes: frontend **96 tests** green, lint and types clean; backend `mvn verify` 77 unit and **65** integration tests green. On the real stack in headless Chrome, the card shows only "Hanging piece: in 5 of your last 20 rapid games, A pattern"; the fact reads "Material lost compared with the best move: 4 points" with the hint; **0 CSP violations**. Screenshots in `docs/images/` retaken.
-- CI after the fixes: CI_RESULT_FIX
+- CI after the fixes, all four jobs green on the first run (Analysis service (install + smoke test): 114s, Backend (build + tests): 92s, Frontend (lint + test + build): 27s, Docker Compose stack: 83s).
 
 **Open points / risks:**
 - **Playwright (#52)** will cover the same flows in a real browser in CI; the screen tests here run in jsdom with react-chessboard's layout stubbed.
