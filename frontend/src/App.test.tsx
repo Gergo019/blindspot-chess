@@ -1,11 +1,13 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "./App";
+import { mockApi, page, patterns } from "./test/mockApi";
 import { THEME_STORAGE_KEY } from "./theme/theme";
 
 describe("App shell", () => {
   beforeEach(() => {
     localStorage.clear();
+    mockApi({ "/api/patterns": patterns(0, 0), "/api/findings": page([]) });
   });
 
   it("shows the header with Findings, Games and a disabled Drills", () => {
@@ -17,15 +19,24 @@ describe("App shell", () => {
     expect(nav.getByRole("button", { name: "Drills" })).toBeDisabled();
   });
 
-  it("shows an empty state instead of data", () => {
+  it("shows an empty state instead of data", async () => {
     render(<App />);
-    expect(screen.getByRole("heading", { name: "No findings yet" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "No findings yet" })).toBeInTheDocument();
   });
 
-  it("switches the panel to games", async () => {
+  it("navigates to games and back, with the URL", async () => {
     render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Games" }));
     expect(screen.getByRole("heading", { name: "No games yet" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/games");
+    await userEvent.click(screen.getByRole("button", { name: "Findings" }));
+    expect(window.location.pathname).toBe("/findings");
+  });
+
+  it("answers an unknown path with a page-not-found message", () => {
+    window.history.replaceState(null, "", "/nowhere");
+    render(<App />);
+    expect(screen.getByRole("heading", { name: "Page not found" })).toBeInTheDocument();
   });
 
   it("renders the board in the starting position with the bundled pieces", () => {

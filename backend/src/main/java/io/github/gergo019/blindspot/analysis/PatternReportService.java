@@ -17,7 +17,9 @@ import io.github.gergo019.blindspot.game.GameRepository;
 /**
  * The blind-spot report (#51, {@link PatternRule}): for every motif, in how many of the player's last
  * {@value PatternRule#WINDOW} eligible games it occurred, and whether that reaches the threshold. Every
- * motif is listed, also with zero games, and the sample size is always given.
+ * motif that has a detector is listed, also with zero games, and the sample size is always given. Motifs
+ * without a detector ({@link Motif#hasDetector()}, for example the knight fork until #26) are left out:
+ * nothing looked for them, so a count of zero would be misleading.
  */
 @Service
 @Transactional(readOnly = true)
@@ -42,6 +44,7 @@ public class PatternReportService {
                         .collect(Collectors.toMap(MotifGameCount::motif, MotifGameCount::games));
         int sampleSize = window.size();
         List<MotifPattern> motifs = Arrays.stream(Motif.values())
+                .filter(Motif::hasDetector)
                 .map(motif -> {
                     long gamesWithFinding = counts.getOrDefault(motif, 0L);
                     return new MotifPattern(motif, gamesWithFinding, sampleSize,

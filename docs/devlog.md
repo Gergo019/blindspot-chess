@@ -4,6 +4,87 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-20: Findings screen (#24 / PR #64)
+
+**Goal:** The first real screen (ADR 0007): see the blind-spot report and every finding on a board, step through the evidence, and check where it came from. Read-only; no drills yet.
+
+**Changes:**
+- `src/api/`: `types.ts` mirrors the backend's response records. `client.ts` is the only code that calls the backend: same-origin `/api`, GET only, and an `ApiError` that carries the status code and never the response body. `useApi.ts` loads and cancels requests.
+- `src/chess/notation.ts` (chess.js 1.4.0): SAN and the position after each move, from FEN plus UCI; it stops at the first illegal move, so the UI always gets a playable prefix.
+- `src/router.ts`: `/` and `/findings` select the newest finding (replacing the URL); `/findings/:id`; `/games`; anything else is "page not found". It uses the History API, so Back and Forward work.
+- `src/findings/`:
+  - `BlindSpotCard`: per motif, "in N of your last M rapid games", and either "A pattern: 3 or more games." or "Below the pattern threshold of 3 games, so not a pattern yet."; with fewer games than the window, a note on how many are analysed.
+  - `FindingList`: newest first, 10 per page, Newer/Older; each row is a button.
+  - `FindingPanel`: game line with a Lichess link, the facts, the line as SAN chips (your move orange, evidence blue), "Position before the move", "Show the best move", and "Why" only when the API returns an explanation.
+  - `MoveList`: the game with `?`/`??` badges, the finding's move ringed, a click shows that position.
+  - `FindingFooter`: engine, depth, threads, hash and detector version.
+  - `StatusCard`: loading and error states.
+- `src/findings/boardView.ts`: what the board shows for a cursor:
+  - **line:** step 0 is before the mistake with your move as the orange arrow and the facts' squares marked; step 1 is after your move; then the evidence moves in blue;
+  - **best:** the engine's move from the position before the mistake;
+  - **game:** any position of the game, replayed from the start with chess.js.
+  The caption is announced in an `aria-live` region.
+- `src/findings/factRenderers.ts` (ADR 0007): every fact key has a label, a value and its board marks. `satisfies Record<keyof Facts, FactRenderer>` makes a missing renderer a type error, and a fact without a renderer is never shown.
+- `src/components/EvidenceBoard.tsx` replaces `Board.tsx`: squares are ringed with `highlightStyle`; **arrows are drawn in its own SVG layer with a dark halo**; the board is oriented to the player's colour; animations only without `prefers-reduced-motion`.
+- `App.tsx` routes between the screens; CSS for the screen.
+- `THIRD_PARTY_NOTICES.md`: chess.js. README and `frontend/README.md` show the new screenshots (`docs/images/findings-screen-dark.png`, `-light.png`); the #50 shell screenshots are removed (they showed a screen that no longer exists).
+
+**Decisions:**
+- **chess.js 1.4.0:** BSD-2-Clause, Copyright (c) 2025 Jeff Hlywa, released 2025-06-14, no dependencies, and no `eval` or `new Function` in its build, so it runs under the CSP of #62.
+- **Arrows with a halo, drawn by us.** react-chessboard's arrows are a flat colour with no outline option, and orange or blue on the blue-grey squares reaches only 1.0 to 1.9:1 (#50). An SVG overlay over the board draws each arrow as a dark halo with the colour on top, the same rule as the square rings and the legend swatches.
+- **No router library.** Three views and one parameter are about 30 lines with the History API; nginx and Vite already serve `index.html` for every path. Revisit when drills add nested routes.
+- **The move list comes from `/api/games/{id}/moves` and is replayed from the start** with chess.js for SAN and positions (the endpoint gives UCI, as decided in #51). The finding's own position comes from its `fenBefore`, so it does not depend on that replay.
+- **Departures from the mockup in ADR 0007:**
+  - "Find a better move" is not built: judging another move needs the engine, so it belongs to drills.
+  - "Play the reply" became the chips, the arrow keys and "Position before the move", which do the same step by step.
+  - "Show the best move" draws the engine's move in blue, the evidence colour: it is the engine's evidence, and a third colour would break "two colours carry the meaning".
+- **Errors never show server details:** the client keeps only the status. The screen says "could not be loaded … try again" (with a retry button), or for a 404 "does not exist, or it is not one of yours" (no retry). A test feeds a 500 whose body contains a JDBC message and checks that neither it nor the status code appears.
+- **Animations follow `prefers-reduced-motion`.** The first test run crashed with react-chessboard's "Square width not found": it measures squares to animate, and jsdom has no layout. Not animating when the user asks for reduced motion, or when `matchMedia` does not exist, fixes that and is the right accessibility default.
+- **The test fixture is a real game** (the backend's TestData game: 4. Nxe5? Qg5 5. Nxf7 Qxg2), so every SAN in the tests is what chess.js derives. Its first facts ("knight on e5 lost") contradicted its own evidence line; the "captured by" renderer found no capture on e5 and the test caught it. The facts now say the pawn on g2 is lost to the queen.
+- **State without effects:** React's hooks lint forbids setting state synchronously in an effect. `useApi` tags each result with its key and attempt, and the board cursor with its finding id, so "loading" and "back to step 0" are derived during render.
+
+**Verification:**
+- Frontend in the Node 26 container: lint and type check clean; **9 test files, 95 tests** (31 new):
+  - **screen tests** (`FindingsScreen.test.tsx`, 16, with a mocked API):
+    - threshold display: 2 games are "below the pattern threshold", 5 are "a pattern", and the note for 7 of 20;
+    - URL: the newest finding is selected into the URL; a deep link to a finding not on the page loads it; selecting changes the URL and Back returns; empty state;
+    - board: the start before the mistake with the orange arrow; chips with derived SAN (`4. Nxe5`, `4… Qg5`, `5. Nxf7`, `5… Qxg2`), where a chip shows its position; ← → Home End stepping, clamped at both ends; the best move drawn as `4. Nxd4`, with no "Find a better move" button; a move-list click and arrow-key stepping through the game;
+    - panel: facts and footer; no "Why" without an explanation, "Why" with one;
+    - errors: a 500 without the server's text or status, with a working retry; a 404 without retry;
+  - fact renderers (3); notation (3); router (8); the shell test updated for routing.
+- **Real stack with the demo data in headless Chrome** (http://localhost:8081):
+  - `/findings/1` opens Rb6 (Black, board seen from Black) with the orange arrow b8→b6 and the capturing knight on c4 ringed in blue;
+  - the chips read `18… Rb6`, `19. Nxb6`, `19… axb6`, `20. Rfe1`, `20… Nd5`, `21. Bf1`, `21… Qf6`;
+  - after a reload in the light theme (the deep link survives), two → presses show "Evidence move 1 of 6: 19. Nxb6" with the blue arrow c4→b6;
+  - `/` selects `/findings/1`; `/findings/999999` shows "This finding does not exist, or it is not one of yours.";
+  - **0 CSP violations**; the only console entry is the browser's own network log of that deliberate 404.
+- Screenshots: `docs/images/findings-screen-dark.png` (before the mistake) and `findings-screen-light.png` (one evidence move in).
+- CI on PR #64, green on the first run: Frontend 25 s (lint, Prettier, types, 95 tests, build), Backend 1m53s, Analysis service 2m05s, Docker Compose stack 1m16s.
+
+**Review fixes before merge** (Gergo's review of PR #64):
+- **No line for a motif without a detector.** The card showed "Allowed knight fork: in 0 of your last 20 rapid games", which reads as "you never allow forks", while no knight-fork detector exists (#26).
+  - Decision: **`/api/patterns` omits** such motifs rather than flagging them (`detectorAvailable=false` would only make every client filter them out).
+  - `Motif.hasDetector()` is the switch, set to true for HANGING_PIECE and false for ALLOWED_KNIGHT_FORK; #26 flips it in the PR that adds the detector.
+  - New IT: three games with knight-fork findings in the data still list only HANGING_PIECE. The existing "listed even with zero findings" test now applies to motifs with a detector.
+  - The card renders what the API lists; a screen test checks there is no knight-fork line. README API table updated.
+- **"Material lost: 4" for 18… Rb6, where the visible line Nxb6 axb6 is rook for knight (2).** Confirmed against ADR 0004 and recomputed with Stockfish 19 at the service's settings (depth 16, 1 thread, 64 MB), from the position before Rb6 over the same 7-ply window:
+  - the best line `c6d4 a6e6 d4e2 g1h1 d7e6 c4e5 b8c8` leaves Black **+2**;
+  - the played line `b8b6 c4b6 a7b6 f1e1 f6d5 e2f1 e6f6` leaves Black **−2**;
+  - so materialLost = best − played = **4**: 2 actually lost plus 2 the best move would have won. That is rule 3 ("measured against the engine's best line"), and ADR 0004's Consequences name this case ("rook for knight while the best line wins a pawn: 4").
+  The detector and its numbers are unchanged; the label now says what is measured, and it follows the rule that produced the number:
+  - **rule 3** (default): "Material lost compared with the best move", hint "How far your line ends behind the engine's best line over the same moves … It includes what the best move would have won."
+  - **rule 2** (your move captures and the reply recaptures on the same square, which the frontend recognises from the line): "Material lost in the exchange on d5", hint "What you gave up on that square minus what you took back there".
+  The findings list no longer shows a bare "−4". The hint is its own row spanning both columns, and long labels wrap (13em), after the first screenshot showed the value squeezed into a one-word column. Tests cover both labels (exchange fixture: 3. Nxd5 exd5) and the hint row.
+- Verification of the fixes: frontend **96 tests** green, lint and types clean; backend `mvn verify` 77 unit and **65** integration tests green. On the real stack in headless Chrome, the card shows only "Hanging piece: in 5 of your last 20 rapid games, A pattern"; the fact reads "Material lost compared with the best move: 4 points" with the hint; **0 CSP violations**. Screenshots in `docs/images/` retaken.
+- CI after the fixes, all four jobs green on the first run (Analysis service (install + smoke test): 114s, Backend (build + tests): 92s, Frontend (lint + test + build): 27s, Docker Compose stack: 83s).
+
+**Open points / risks:**
+- **Playwright (#52)** will cover the same flows in a real browser in CI; the screen tests here run in jsdom with react-chessboard's layout stubbed.
+- On narrow screens the panel stacks under the board as in #50; the findings screen was not screenshot-checked at phone width yet. #52 adds a narrow-viewport scenario.
+- The move list replays the game from the start; a game that does not start from the standard position (none are imported today) would show no SAN there, while the finding itself still works from its `fenBefore`.
+
+**Links:** [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [PR #64](https://github.com/Gergo019/blindspot-chess/pull/64), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [#51](https://github.com/Gergo019/blindspot-chess/issues/51), [#52](https://github.com/Gergo019/blindspot-chess/issues/52), [chess.js](https://github.com/jhlywa/chess.js)
+
 ## 2026-11-20: Read-only findings and patterns API (#51 / PR #63)
 
 **Goal:** Everything the findings screen (#24) needs, as a read-only JSON API under `/api`, with no N+1 queries, errors without internals, and the security items of #60 that belong to the API.
