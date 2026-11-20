@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Playwright end-to-end tests (#52) against the real stack with the 20 demo games, in a pinned Playwright image: blind-spot card, findings list with URL/reload/Back, deep link, evidence line by chips and keys (checked square by square), best move and move list, narrow screen, theme, error state, and axe in both themes; every scenario fails on a CSP violation or console error. CI job "End-to-end (Playwright)" uploads the report, traces and stack logs on failure
 - Findings screen (#24): the blind-spot report (count and sample size always shown; below the threshold it says so), the findings list (newest first, paged, `/findings/:id` deep links), the board before the mistake with your move as an orange arrow and the evidence in blue (squares as rings, arrows with a dark halo), the evidence line as SAN chips derived with chess.js and stepped with ← → Home End, "Show the best move", the facts (every fact type has a renderer; "Material lost" says whether it is measured against the best move or in the exchange on the square, ADR 0004), the explanation only when the API returns one, the game's moves with classifications, and the engine and detector in the footer; loading, empty and error states without server details. Animations follow `prefers-reduced-motion`
 - Read-only API (#51): `GET /api/patterns` (blind-spot report, listing only motifs that have a detector: distinct games with each motif among the last 20 analysed rapid games, sample size, threshold of 3), `GET /api/findings` (newest first, paged, filter by motif), `GET /api/findings/{id}` (FEN, played and best move, evidence line, facts, engine, game, and only a verified TEMPLATE explanation), `GET /api/games/{id}/moves`. Response records only, fetch joins (a page costs 3 queries whatever its size), RFC 9457 problem details without internals, GET only, no CORS; OpenAPI at `/api/docs` (springdoc 3.2.0, no UI)
 - `SECURITY.md` (#60): private vulnerability reporting (enabled on the repository), scope, and the local-use, no-authentication status
@@ -16,6 +17,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- The board is one labelled image for assistive technology and its inside is inert: react-chessboard had made every piece an unnamed, focusable "draggable" button (25 to 32 tab stops on a read-only board), found by axe (#52). The board caption is a `role="status"` live region
 - Docker Compose publishes every port on `127.0.0.1` only, and the analysis service publishes no port; `ANALYSIS_SERVICE_PORT` is gone from `.env.example` (#60)
 - CI runs with `permissions: contents: read`, and every action is pinned by commit SHA with its version as a comment (#60)
 - Dependabot holds TypeScript major updates for the frontend: typescript-eslint supports only TypeScript below 6.1, so TypeScript 7 broke the grouped npm PR (#58)
