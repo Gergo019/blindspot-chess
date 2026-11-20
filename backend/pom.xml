@@ -19,7 +19,25 @@
 
     <properties>
         <java.version>25</java.version>
+        <!-- Cucumber-JVM (business-rule features, see CONTRIBUTING). MIT; 8.0.4 (2026-10-02) is built
+             against Spring 7.0.9 and JUnit 6.1.3. -->
+        <cucumber.version>8.0.4</cucumber.version>
+        <!-- JUnit 6.1.3 (2026-08-07) instead of Boot 4.1.2's 6.0.3: the Cucumber engine is compiled
+             against the 6.1 platform API. Remove when Boot manages 6.1 or later. -->
+        <junit-jupiter.version>6.1.3</junit-jupiter.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.cucumber</groupId>
+                <artifactId>cucumber-bom</artifactId>
+                <version>${cucumber.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- Web + REST -->
@@ -82,6 +100,28 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Business rules as Cucumber features (src/test/resources/features), run by Failsafe through
+             the JUnit suite BusinessRulesIT. -->
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-java</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-spring</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-junit-platform-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-suite</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

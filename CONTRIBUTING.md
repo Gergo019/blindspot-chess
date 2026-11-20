@@ -4,7 +4,7 @@ These rules keep BlindSpot maintainable as it grows: `main` always works, every 
 
 ## Product rules
 
-These shape design and tests more than any Git convention:
+These shape design and tests more than any Git convention. Rules about what a player sees are specified as Cucumber features in [`backend/src/test/resources/features/`](backend/src/test/resources/features); a change to such a rule changes its feature in the same PR.
 
 1. **Completed games only.** The importer and the analysis pipeline never touch a game in progress.
 2. **Every coaching claim shown to a player has board evidence** they can play through: a finding without an evidence line is invalid.

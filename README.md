@@ -158,6 +158,10 @@ cd frontend && docker run --rm --ipc=host -e E2E_BASE_URL=http://host.docker.int
 
 On Linux, use `--network host -e E2E_BASE_URL=http://localhost:8081` instead of `host.docker.internal`. With Node 26 and `npx playwright install chromium` on the machine, `npm run e2e` in `frontend/` works too. A failed run leaves a trace per test in `frontend/test-results/` (`npx playwright show-trace <file>`); in CI the job "End-to-end (Playwright)" uploads the report, the traces and the stack's logs as an artifact.
 
+### Product rules as features
+
+The business rules are written as Cucumber features in plain product language in [`backend/src/test/resources/features/`](backend/src/test/resources/features): when a repeated mistake counts as a pattern (3 distinct games among the last 20 analysed rapid games, once per game, the sample size always reported), that only verified template explanations are shown, and that kinds of mistake without a detector are not reported. The steps seed data through the repositories and check everything through the real HTTP API against PostgreSQL (Testcontainers). They run with the other integration tests: `cd backend && mvn verify` (or only them: `mvn verify -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=BusinessRulesIT`).
+
 ### Read API
 
 The backend serves a read-only JSON API under `/api` ([#51](https://github.com/Gergo019/blindspot-chess/issues/51)). The web app calls it on its own origin through nginx (http://localhost:8081/api/...), so there is no CORS configuration; the backend answers directly on http://localhost:8080/api/... too. The OpenAPI description is at [`/api/docs`](http://localhost:8081/api/docs).
