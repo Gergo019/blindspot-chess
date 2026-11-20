@@ -2,6 +2,7 @@ package io.github.gergo019.blindspot.game;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -57,4 +58,22 @@ public interface GameRepository extends JpaRepository<Game, Long> {
     default boolean claimForAnalysis(long id, Instant now) {
         return claimForAnalysis(id, now, AnalysisStatus.PENDING, AnalysisStatus.RUNNING) == 1;
     }
+
+    /**
+     * The games the pattern report looks at (README, "Report"): the user's analysed rapid games, newest
+     * first. Imported games are always finished and standard (the importer skips the rest), so speed and
+     * analysis status are the remaining conditions. The caller limits the result to the report window.
+     */
+    @Query("""
+            select g.id from Game g
+            where g.account.user.id = :userId
+              and g.speed = io.github.gergo019.blindspot.game.GameEnums.Speed.RAPID
+              and g.analysisStatus = io.github.gergo019.blindspot.game.GameEnums.AnalysisStatus.DONE
+            order by g.playedAt desc, g.id desc
+            """)
+    List<Long> findEligibleForReport(@Param("userId") Long userId, Pageable pageable);
+
+    /** One game of the user; empty if it does not exist or belongs to someone else. */
+    @Query("select g from Game g where g.id = :id and g.account.user.id = :userId")
+    Optional<Game> findForUser(@Param("id") Long id, @Param("userId") Long userId);
 }

@@ -90,14 +90,14 @@ jobs:
       - name: Frontend serves the app and proxies /api to the backend
         run: |
           curl -fsS http://localhost:8081/ | grep -q "<title>BlindSpot</title>"
-          # No /api endpoint exists yet (#51). Through nginx, /api/proxy-check must give the backend's
-          # own answer: the same status as asking the backend directly, and Spring's JSON error body
-          # naming the path. nginx's 404 page or the single-page-app fallback (200, index.html) would not.
+          # /api/proxy-check does not exist. Through nginx it must give the backend's own answer: the same
+          # status as asking the backend directly, and its RFC 9457 problem detail naming the path (#51).
+          # nginx's 404 page or the single-page-app fallback (200, index.html) would not.
           via_frontend=$(curl -sS -w '\n%{http_code}' http://localhost:8081/api/proxy-check)
           direct=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8080/api/proxy-check)
           echo "via frontend: $via_frontend"; echo "direct status: $direct"
           test "$(echo "$via_frontend" | tail -n1)" = "$direct"
-          echo "$via_frontend" | grep -q '"path":"/api/proxy-check"'
+          echo "$via_frontend" | grep -q '"instance":"/api/proxy-check"'
           test "$(docker compose ps --format '{{.Health}}' frontend)" = healthy
       - name: Ports are published on 127.0.0.1 only, and the analysis service not at all
         run: |

@@ -4,6 +4,68 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-20: Read-only findings and patterns API (#51 / PR #PRNUM)
+
+**Goal:** Everything the findings screen (#24) needs, as a read-only JSON API under `/api`, with no N+1 queries, errors without internals, and the security items of #60 that belong to the API.
+
+**Changes:**
+- **Endpoints** (in the analysis context, `analysis/api`):
+  - `GET /api/patterns`: the blind-spot report. For every motif: `gamesWithFinding` among the last 20 eligible games, `sampleSize`, and `pattern` (at least 3 games). Every motif is listed, also with 0, and the sample size is always given.
+  - `GET /api/findings?motif=&page=&size=`: newest game first; `size` 1 to 50 (default 20), `page` from 0; optional `motif`.
+  - `GET /api/findings/{id}`: `fenBefore`, `played` (UCI and SAN), `best` (UCI; `san` null), `evidenceLineUci` (continues after the played move), `facts`, `classification`, `detectorVersion`, the engine (version, depth, threads, hash), the game (Lichess id and link, date, colour, result, opponent, ratings, opening), and `explanation`, **only for a TEMPLATE explanation that PASSED** (via `ExplanationRepository.findShowable`), otherwise null.
+  - `GET /api/games/{id}/moves`: every half-move with ply, move number, side, played move, best move UCI and classification, plus the game's analysis status.
+- **Read side:**
+  - `FindingReadService`, `PatternReportService` and `GameMovesReadService` are `@Transactional(readOnly = true)` and map to records (`FindingResponses`); the controllers only validate parameters and call them.
+  - `PatternRule` (window 20, threshold 3) is the one place for the rule that was only in the README so far.
+  - `CurrentPlayer` (account context) resolves the player: the `demo` user with the demo profile, otherwise `LICHESS_USERNAME`.
+- **Queries** (all take a user id):
+  - `MistakeFindingRepository.findPageForUser` / `findPageForUserAndMotif` / `findForUser` fetch-join the move and the game;
+  - `countGamesByMotif` counts `distinct` games per motif in one grouped query;
+  - `GameRepository.findEligibleForReport` (RAPID and DONE, newest first) and `findForUser`.
+- **Errors:**
+  - `common/api/ApiExceptionHandler` (extends `ResponseEntityExceptionHandler`) answers in RFC 9457 problem details. A type mismatch gives 400 "Invalid value for 'motif'. Allowed: …"; a violated constraint gives 400 "size must be less than or equal to 50"; anything unexpected is logged with its stack trace and answered with a generic 500.
+  - `NotFoundException` gives 404 for an unknown id and for another player's id alike.
+  - `application.yml`: `server.error.include-stacktrace: never`, `include-message: never`, `include-exception: false`, `include-binding-errors: never`.
+- **OpenAPI:** `springdoc-openapi-starter-webmvc-api` **3.2.0** serves `/api/docs` (JSON only, no Swagger UI).
+- **CI:** the Compose job's proxy check now expects the backend's problem detail (`"instance":"/api/proxy-check"`) instead of Spring's old error body (`"path"`).
+- README "Read API" section, CHANGELOG; #60's two API items are marked done.
+
+**Decisions:**
+- **Moves are UCI plus the FEN they are played from; SAN only where stored** (decided with Gergo): the API gives the played move's stored SAN, and `best.san` is null. Notation is presentation, derived in the frontend with chess.js in #24, which #24 needs anyway to step through evidence lines and which drills will need for move legality. **The analysis service owns the facts; notation is derived for display.** Rejected:
+  - storing a best-move SAN (contract change, V5, regenerated golden files) for display alone;
+  - a JVM chess library.
+  chess.js's licence and release age are checked in #24.
+- **The move list is its own endpoint**, `GET /api/games/{id}/moves`, not part of the finding detail: the detail stays small; the list is per game and serves the future Games screen too, and the client caches it once for several findings of the same game. **Its controller lives in the analysis context**, because classifications are analysis results. A controller in the game context would make game depend on analysis while analysis already depends on game.
+- **Eligible games** are the player's games with speed RAPID and analysis DONE, newest first, the 20 newest. Every imported game is finished and standard (the importer skips the rest), so those are the remaining conditions. FAILED, PENDING and RUNNING games are neither counted nor part of the sample.
+- **No configured player means empty, not an error:** the report has sample size 0 and the list is empty, so the screen can say "no games yet". A detail or move list for any id is then 404.
+- **Another player's id is a plain 404**, so the API does not reveal which ids exist; this keeps the behaviour right when sign-up adds users.
+- **springdoc fits the dependency policy:** Apache-2.0, released 2026-10-24 (27 days old), built against Spring Boot 4.1.2 (the version used here; checked in its POM on Maven Central). The API module only: Swagger UI's inline scripts would be blocked by the frontend's CSP (#62), and the JSON is enough for tooling.
+- **Pages are not Spring's `Page`** but a `PageResponse` record (`items`, `page`, `size`, `totalItems`, `totalPages`), because `PageImpl`'s JSON is not a stable contract.
+
+**Verification:**
+- `mvn verify` in Docker (repository mounted, so `AnalysisEndToEndIT` can build the analysis image): **77 unit tests and 64 integration tests green**. New: `PatternRuleTest` and `ReadApiIT` (38 tests over real HTTP and PostgreSQL):
+  - **report:** 2 games are not a pattern (sample size still shown); 3 are; two findings in one game count once; 7 eligible games give a sample of 7; with 21 eligible games only the 20 newest count (a finding in the 21st is ignored); BLITZ, PENDING and FAILED games and another player's games are ignored; every motif is listed; no player data gives an empty report;
+  - **list:** newest first with paging and only the player's findings; motif filter; summary fields; `size=51`, `size=0`, `page=-1` are 400 naming the parameter; `motif=FORK`, `page=one`, `size=1e9` are 400 "Invalid value", and the motif error lists the allowed values;
+  - **N+1:** a page with 1 finding and a page with 11 findings cost the same number of statements (Hibernate statistics), at most 3: user lookup, page, count. **Checked that the test can fail:** without `join fetch`, the 11-finding page took 24 statements instead of 4, and the test failed.
+  - **detail:** all fields; an LLM explanation that passed and a TEMPLATE that failed both give `explanation: null`; a TEMPLATE that passed is shown; unknown and foreign ids are 404; a non-numeric id is 400; corrupt facts give a **generic 500 without the parser's message**;
+  - **moves:** classifications in ply order; an unanalysed game gives `PENDING` and no moves; unknown and foreign games are 404;
+  - **boundaries:** POST/PUT/PATCH/DELETE on every endpoint give 405; a cross-origin preflight and a cross-origin GET get no `Access-Control-Allow-*` headers; an unknown `/api` path is a 404 problem detail with `instance`; `/api/docs` lists the four paths, each with GET only.
+  - Every error response is checked to be `application/problem+json` with no `trace`, `exception` or `message` and no stack-trace text.
+- **Demo stack through nginx** (http://localhost:8081, demo data analysed):
+  - `/api/patterns`: `HANGING_PIECE` in **5 of 20** games, `pattern: true`; `ALLOWED_KNIGHT_FORK` 0 of 20.
+  - `/api/findings?size=2`: newest first, 5 in total, with Lichess links such as `https://lichess.org/008pkspi/black`.
+  - `/api/findings/1`: Rb6 (ply 36) with `fenBefore`, best `c6d4`, a 6-move evidence line, Stockfish 19 at depth 16 with 1 thread and 64 MB, and `explanation: null`.
+  - `/api/games/8/moves`: 39 moves, ply 36 BLUNDER.
+  - `/api/docs`: OpenAPI 3.1.0 with the four paths; `POST /api/findings` gives 405.
+- CI on PR #PRNUM: CI_RESULT
+
+**Open points / risks:**
+- The report query reads up to 20 game ids per request and then one grouped count. Indexes on `games (account_id, played_at)` and `move_evaluations (game_id)` already cover it; revisit only with many users.
+- `CurrentPlayer` looks the user up on every request (one indexed query); it goes away with sign-up.
+- `facts` are typed for HANGING_PIECE; a new fact type (#34) extends `Facts` together with its renderer in the frontend (ADR 0007).
+
+**Links:** [#51](https://github.com/Gergo019/blindspot-chess/issues/51), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [#60](https://github.com/Gergo019/blindspot-chess/issues/60), [springdoc-openapi](https://springdoc.org/)
+
 ## 2026-11-20: Local-only ports, least-privilege CI, pinned actions, SECURITY.md (PR #62)
 
 **Goal:** Basic security hygiene before the first API (#51): nothing of the local stack is reachable from the network, CI has only the rights it needs and runs exactly the action code that was reviewed, there is a private way to report problems, and the web app sends tested security headers.
