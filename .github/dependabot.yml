@@ -33,6 +33,11 @@ updates:
       # Remove when typescript-eslint supports TypeScript 7.
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
+      # Playwright must match the browser image pinned by digest in .github/workflows/ci.yml (job
+      # "End-to-end (Playwright)"), which Dependabot cannot update. Upgrade both by hand, together:
+      # @playwright/test, the playwright-core override in frontend/package.json, and the image.
+      - dependency-name: "@playwright/test"
+      - dependency-name: "playwright-core"
 
   - package-ecosystem: github-actions
     directory: /

@@ -74,7 +74,7 @@ The evaluation reports, per mode, unsupported claims (including examples that re
 | Database design | Flyway migrations with check constraints, partial indexes, JSONB |
 | REST and service boundaries | backend calls the analysis service over REST; Lichess API integration |
 | Domain-Driven Design | bounded contexts, entities that guard their own invariants |
-| Testing | JUnit 5 unit tests (Surefire), Testcontainers integration tests (`*IT`, Failsafe) on real PostgreSQL, an end-to-end test that runs a known game through the backend, the real analysis service and Stockfish, and the Lichess import tested against recorded API responses (never the live API); planned: Cucumber acceptance tests, Playwright end-to-end tests |
+| Testing | JUnit 5 unit tests (Surefire), Testcontainers integration tests (`*IT`, Failsafe) on real PostgreSQL, an end-to-end test that runs a known game through the backend, the real analysis service and Stockfish, and the Lichess import tested against recorded API responses (never the live API); Playwright end-to-end tests against the real stack with axe accessibility checks; planned: Cucumber acceptance tests |
 | React + TypeScript | `frontend/`: Vite, strict TypeScript, ESLint, Vitest + Testing Library, a WCAG contrast test over every theme colour pair, served by nginx as a non-root container |
 | CI/CD and containers | GitHub Actions, Docker multi-stage builds, Docker Compose; planned: Kubernetes manifests tested on kind |
 | Applied AI, measured | validated typed claims, and a measured experiment comparing templates with AI explanations (planned) |
@@ -142,6 +142,21 @@ cd analysis-service && docker build --target test -t analysis-test . && docker r
 ![The findings screen in the dark theme: a demo game seen from Black, the move 18… Rb6 as an orange arrow, the capturing knight marked in blue; on the right the blind-spot report (hanging piece in 5 of the last 20 rapid games, a pattern), the list of findings and the selected finding's facts](docs/images/findings-screen-dark.png)
 
 The findings screen (#24): the blind-spot report, your findings, and for the selected one the board before your move, the evidence line to step through (chips, arrow keys), the engine's best move on request, the game's moves and how the finding was produced. Each finding has its own address (`/findings/:id`). Dark is the default; the toggle in the header switches to the light theme and the choice is remembered. For frontend development without Docker (Node 26, the version in `frontend/.nvmrc`), see [frontend](frontend/README.md).
+
+### End-to-end tests
+
+Playwright tests (`frontend/e2e/`) drive the real stack with the 20 demo games in Chromium: the blind-spot card, the findings list and its URLs, deep links, stepping through the evidence line on the board, the best move and the move list, a narrow screen, the theme, the error state and an axe accessibility check in both themes. Every scenario also fails on a CSP violation or a console error. They run in the Playwright image pinned in CI (same Chromium, Node 26), so nothing needs installing:
+
+```bash
+cp .env.example .env && docker compose up -d --build      # the demo profile is the default
+frontend/e2e/wait-for-demo.sh                               # until all 20 demo games are analysed (a few minutes)
+cd frontend && docker run --rm --ipc=host -e E2E_BASE_URL=http://host.docker.internal:8081 \
+  -v "$PWD:/app" -w /app \
+  mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe \
+  sh -c "npm ci && npx playwright test"
+```
+
+On Linux, use `--network host -e E2E_BASE_URL=http://localhost:8081` instead of `host.docker.internal`. With Node 26 and `npx playwright install chromium` on the machine, `npm run e2e` in `frontend/` works too. A failed run leaves a trace per test in `frontend/test-results/` (`npx playwright show-trace <file>`); in CI the job "End-to-end (Playwright)" uploads the report, the traces and the stack's logs as an artifact.
 
 ### Read API
 
