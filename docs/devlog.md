@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-21: Release v0.2.0 (PR #PRNUM)
+## 2026-11-21: Release v0.2.0 (PR #69)
 
 **Goal:** Tag the web app as v0.2.0: everything since v0.1.0, with the README showing the product as it is today and a quick start that works on a fresh clone.
 
@@ -38,11 +38,11 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - The demo analysis was complete 11 min after the start, about 7.5 min after the stack was up: 20 games, hanging piece in 5, a pattern. That is why the README's time estimate changed.
   - "Open localhost:8081", checked in a real browser: the **Playwright suite ran against this fresh stack: 10 passed** (including axe in both themes and no CSP violations).
   - The throwaway stack and its volume were removed afterwards (`docker compose down -v` with that project name only).
-- CI on PR #PRNUM: CI_RESULT
+- CI on PR #69: CI_RESULT
 
 **After merge:** an annotated tag `v0.2.0` on the merge commit and a GitHub release "v0.2.0" with the CHANGELOG section as notes.
 
-**Links:** [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [CHANGELOG 0.2.0](../CHANGELOG.md), [v0.1.0](https://github.com/Gergo019/blindspot-chess/releases/tag/v0.1.0)
+**Links:** [PR #69](https://github.com/Gergo019/blindspot-chess/pull/69), [CHANGELOG 0.2.0](../CHANGELOG.md), [v0.1.0](https://github.com/Gergo019/blindspot-chess/releases/tag/v0.1.0)
 
 ## 2026-11-20: Product rules as Cucumber features (PR #68)
 
