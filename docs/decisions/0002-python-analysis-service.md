@@ -35,3 +35,17 @@ Every stored evaluation must be reproducible (product rule 4). A Stockfish insta
 - Upgrading Stockfish is a deliberate change: new version and checksums in the Dockerfile, and stored evaluations from the old version are either kept with their recorded version or re-analysed.
 - Single-threaded search at depth 16 is slower than using all cores; acceptable for background analysis of one game at a time.
 - Stockfish is GPL-3.0. Running it as a separate program keeps this project's own code under MIT; the image ships Stockfish's licence next to the binary.
+
+## Amendment 2026-11-20: licence of the analysis service
+
+**Decision:** `analysis-service/` is licensed under the **GPL-3.0-or-later** (`analysis-service/LICENSE`). `backend/`, `frontend/` and the rest of the repository stay under the MIT licence.
+
+**Reason:** the Consequences above say that running Stockfish as a separate program keeps the project's own code MIT. That holds for Stockfish, but the analysis service also **imports** [python-chess](https://python-chess.readthedocs.io/) (GPL-3.0-or-later) into its own Python code, so the service is a work based on python-chess and has to be distributed under the GPL. Choosing GPL-3.0-or-later matches python-chess's own terms.
+
+**What stays MIT and why:** the backend and the frontend contain no code of the analysis service and do not link to it; they talk to it only over HTTP (`POST /analyze`, `GET /health`), as separate programs in separate containers. That separation is the same one that already applies to Stockfish.
+
+**Consequences:**
+- Anyone who distributes the analysis service (source or image) does so under the GPL, with its source. The repository is public, so the source is available.
+- Code must not move from `analysis-service/` into `backend/` or `frontend/`, and the backend must not embed the service as a library. Crossing that boundary would make the receiving part GPL too.
+- The superseded sentence in the Consequences above ("keeps this project's own code under MIT") now applies only to the backend, the frontend and the tools.
+- Alternative rejected: replacing python-chess with an MIT-licensed chess library to keep everything MIT. python-chess's PGN parsing, move generation and UCI engine handling are what the service is built on (see Decision), and rewriting that has no product value.

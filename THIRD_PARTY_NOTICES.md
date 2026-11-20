@@ -1,6 +1,6 @@
 # Third-party notices
 
-BlindSpot's own code is under the [MIT licence](LICENSE). It ships or runs the following third-party software and assets under their own licences. Every bundled asset is listed here ([ADR 0007](docs/decisions/0007-frontend-board-and-visual-identity.md)); adding one means adding it here in the same pull request.
+BlindSpot's own code is under the [MIT licence](LICENSE), except `analysis-service/`, which is under the [GPL-3.0-or-later](analysis-service/LICENSE) because it imports python-chess ([ADR 0002, amendment of 2026-11-20](docs/decisions/0002-python-analysis-service.md#amendment-2026-11-20-licence-of-the-analysis-service)). It ships or runs the following third-party software and assets under their own licences. Every bundled asset is listed here ([ADR 0007](docs/decisions/0007-frontend-board-and-visual-identity.md)); adding one means adding it here in the same pull request.
 
 ## Frontend (bundled into the web app)
 
@@ -19,7 +19,7 @@ Development tools (Vite, TypeScript, ESLint, Prettier, Vitest, Testing Library, 
 | Component | Version | Licence | Notes |
 |---|---|---|---|
 | [Stockfish](https://stockfishchess.org/) | 19 (official release binary, checksum-pinned) | GPL-3.0 | Runs as a **separate program** that the analysis service talks to over UCI; it is not linked into BlindSpot's code. The image ships Stockfish's licence at `/usr/local/share/doc/stockfish/COPYING.txt` ([ADR 0002](docs/decisions/0002-python-analysis-service.md)). |
-| [python-chess](https://python-chess.readthedocs.io/) | see `analysis-service/requirements.txt` | GPL-3.0 | A library imported by the analysis service's Python code (unlike Stockfish, which is a separate program). The analysis service runs as its own process and is not part of the backend or the frontend. |
+| [python-chess](https://python-chess.readthedocs.io/) | 1.11.2 (`analysis-service/requirements.txt`) | GPL-3.0-or-later | A library imported by the analysis service's Python code, unlike Stockfish, which is a separate program. **This is why `analysis-service/` is GPL-3.0-or-later.** The backend and the frontend only call the service over HTTP and stay MIT. |
 
 ## Data
 
