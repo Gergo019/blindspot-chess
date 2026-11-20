@@ -50,7 +50,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - Image: `/healthz` answers `ok`; `/` serves the app; `/games` falls back to `index.html`; `Cache-Control: no-cache` and `nosniff` are set; it runs as `uid=101(nginx)`; without a backend, `/api` answers 502.
 - Full stack locally: frontend healthy; `/api/proxy-check` through nginx and straight to the backend both give Spring's 404 JSON with `"path":"/api/proxy-check"`.
 - Screenshots with headless Chrome against the stack (dark, light, and 420 px wide): the stored theme is applied, 32 pieces are on the board, and the font in use is Inter Variable. Dark and light are in `docs/images/`.
-- CI on PR #54: CI_RESULT
+- CI on PR #54, green on the first run: **Frontend (lint + test + build)** 21 s, Backend 1m31s, Analysis service 1m32s, Docker Compose stack 1m29s. In the Compose job the frontend's `/healthz` answered `ok`, and `/api/proxy-check` through nginx returned the backend's own 404 JSON (`"path":"/api/proxy-check"`), with the same status as asking the backend directly.
 
 **Open points / risks:**
 - **python-chess is GPL-3.0 and is imported by the analysis service's code**, unlike Stockfish, which runs as a separate program. ADR 0002 treats the analysis service as part of an MIT project. Whether that service must itself be GPL (it is a separate program from the backend and the frontend) needs a decision; it is listed accurately in `THIRD_PARTY_NOTICES.md` meanwhile.
