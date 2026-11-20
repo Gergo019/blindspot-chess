@@ -57,7 +57,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - one wrong expectation in my test: after 21. Bf1 the f6 square is empty, since 20… Nd5 moved the knight.
   - then **10 of 10, and 50 of 50 with `--repeat-each=5 --workers=4`** (13.6 s).
 - Frontend unit tests: 97 green (1 new: the board as a labelled image with an inert inside); lint, types (app and e2e) and Prettier clean.
-- CI on PR #65: CI_RESULT
+- CI on PR #65, all five jobs green on the first run. **End-to-end (Playwright) 7m46s**: start the stack 85 s, wait for the demo analysis 342 s, Playwright 33 s with `npm ci` (**10 passed in 7.8 s**). Backend 2m18s, Analysis service 1m56s, Docker Compose stack 1m21s, Frontend 33 s.
 
 **Open points / risks:**
 - The suite needs the full demo analysis (a few minutes on the runner); the job has a 30-minute timeout and the wait script 15 minutes.
