@@ -2,7 +2,9 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 
+// Some tests run in the node environment (no DOM): only reset the DOM where there is one.
 afterEach(() => {
+  if (typeof document === "undefined") return;
   cleanup();
   document.documentElement.dataset["theme"] = "dark";
 });

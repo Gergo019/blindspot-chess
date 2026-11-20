@@ -89,11 +89,13 @@ cp .env.example .env
 docker compose up --build
 ```
 
+**The stack is for local use** ([SECURITY.md](SECURITY.md)): there is no authentication yet, every published port is bound to `127.0.0.1`, and the analysis service publishes none. The database password in `.env.example` is a local default: **change `POSTGRES_PASSWORD` before any deployment.**
+
 | Service | URL |
 |---|---|
 | Web app | http://localhost:8081 (React, served by nginx; `/api` is proxied to the backend) |
 | Backend | http://localhost:8080/health |
-| Analysis service | http://localhost:8000/health (reports the pinned Stockfish version, depth, threads and hash size); `POST /analyze`, see [analysis-service](analysis-service/README.md) |
+| Analysis service | no published port; only the backend calls it, on the Compose network. Its health (the pinned Stockfish version, depth, threads and hash size): `docker compose exec analysis-service python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read().decode())"`. `POST /analyze`: see [analysis-service](analysis-service/README.md) |
 | PostgreSQL | `localhost:5432` (db/user/password from `.env`) |
 
 **Demo (the default in `.env.example`):** `SPRING_PROFILES_ACTIVE=demo` loads 20 real rapid games from the [Lichess open database](https://database.lichess.org/) (January 2013, CC0) for a fictional player `demo` on the first start. The background analysis then works through them one at a time, in about 3 to 4 minutes. Afterwards the database holds 20 analysed games, with hanging-piece findings in 5 of them (`hanging-0.4`). No Lichess account or token is needed, and the demo profile never calls the Lichess API. To look at the findings:
@@ -114,6 +116,13 @@ Run only the database in Docker and the backend from your IDE:
 ```bash
 docker compose up -d db
 cd backend && mvn spring-boot:run
+```
+
+The backend then expects the analysis service at `http://localhost:8000` (`ANALYSIS_SERVICE_URL`). Compose does not publish that port, so to analyse games from the IDE, run the service on its own, reachable only from this machine:
+
+```bash
+docker build -t analysis-service analysis-service
+docker run --rm -p 127.0.0.1:8000:8000 analysis-service
 ```
 
 Backend tests: `mvn test` runs the unit tests; `mvn verify` also runs the integration tests (`*IT`). Docker must be running: Testcontainers starts a throwaway PostgreSQL and builds the analysis service from `analysis-service/Dockerfile` for the end-to-end test (the first build takes a minute or two).
