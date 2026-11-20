@@ -1,12 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 
 // Some tests run in the node environment (no DOM): only reset the DOM where there is one.
 afterEach(() => {
+  vi.unstubAllGlobals();
   if (typeof document === "undefined") return;
   cleanup();
   document.documentElement.dataset["theme"] = "dark";
+  window.history.replaceState(null, "", "/");
 });
 
 // jsdom has no ResizeObserver; react-chessboard measures its container with it.
