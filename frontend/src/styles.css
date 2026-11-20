@@ -386,6 +386,8 @@ kbd {
 }
 
 .facts dt {
+  /* A long label wraps instead of squeezing the values into a narrow column. */
+  max-width: 13em;
   color: var(--text-muted);
 }
 
@@ -393,8 +395,10 @@ kbd {
   margin: 0;
 }
 
-.facts__hint {
-  display: block;
+/* The hint spans both columns, under the value it explains. */
+.facts dd.facts__hint {
+  grid-column: 1 / -1;
+  margin-bottom: 4px;
   color: var(--text-muted);
   font-size: 0.8rem;
 }

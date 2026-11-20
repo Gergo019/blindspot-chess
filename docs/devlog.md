@@ -61,6 +61,23 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - Screenshots: `docs/images/findings-screen-dark.png` (before the mistake) and `findings-screen-light.png` (one evidence move in).
 - CI on PR #64, green on the first run: Frontend 25 s (lint, Prettier, types, 95 tests, build), Backend 1m53s, Analysis service 2m05s, Docker Compose stack 1m16s.
 
+**Review fixes before merge** (Gergo's review of PR #64):
+- **No line for a motif without a detector.** The card showed "Allowed knight fork: in 0 of your last 20 rapid games", which reads as "you never allow forks", while no knight-fork detector exists (#26).
+  - Decision: **`/api/patterns` omits** such motifs rather than flagging them (`detectorAvailable=false` would only make every client filter them out).
+  - `Motif.hasDetector()` is the switch, set to true for HANGING_PIECE and false for ALLOWED_KNIGHT_FORK; #26 flips it in the PR that adds the detector.
+  - New IT: three games with knight-fork findings in the data still list only HANGING_PIECE. The existing "listed even with zero findings" test now applies to motifs with a detector.
+  - The card renders what the API lists; a screen test checks there is no knight-fork line. README API table updated.
+- **"Material lost: 4" for 18… Rb6, where the visible line Nxb6 axb6 is rook for knight (2).** Confirmed against ADR 0004 and recomputed with Stockfish 19 at the service's settings (depth 16, 1 thread, 64 MB), from the position before Rb6 over the same 7-ply window:
+  - the best line `c6d4 a6e6 d4e2 g1h1 d7e6 c4e5 b8c8` leaves Black **+2**;
+  - the played line `b8b6 c4b6 a7b6 f1e1 f6d5 e2f1 e6f6` leaves Black **−2**;
+  - so materialLost = best − played = **4**: 2 actually lost plus 2 the best move would have won. That is rule 3 ("measured against the engine's best line"), and ADR 0004's Consequences name this case ("rook for knight while the best line wins a pawn: 4").
+  The detector and its numbers are unchanged; the label now says what is measured, and it follows the rule that produced the number:
+  - **rule 3** (default): "Material lost compared with the best move", hint "How far your line ends behind the engine's best line over the same moves … It includes what the best move would have won."
+  - **rule 2** (your move captures and the reply recaptures on the same square, which the frontend recognises from the line): "Material lost in the exchange on d5", hint "What you gave up on that square minus what you took back there".
+  The findings list no longer shows a bare "−4". The hint is its own row spanning both columns, and long labels wrap (13em), after the first screenshot showed the value squeezed into a one-word column. Tests cover both labels (exchange fixture: 3. Nxd5 exd5) and the hint row.
+- Verification of the fixes: frontend **96 tests** green, lint and types clean; backend `mvn verify` 77 unit and **65** integration tests green. On the real stack in headless Chrome, the card shows only "Hanging piece: in 5 of your last 20 rapid games, A pattern"; the fact reads "Material lost compared with the best move: 4 points" with the hint; **0 CSP violations**. Screenshots in `docs/images/` retaken.
+- CI after the fixes: CI_RESULT_FIX
+
 **Open points / risks:**
 - **Playwright (#52)** will cover the same flows in a real browser in CI; the screen tests here run in jsdom with react-chessboard's layout stubbed.
 - On narrow screens the panel stacks under the board as in #50; the findings screen was not screenshot-checked at phone width yet. #52 adds a narrow-viewport scenario.

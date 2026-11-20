@@ -170,7 +170,9 @@ describe("Facts, explanation and footer", () => {
     expect(screen.getByText("Captured by").nextSibling).toHaveTextContent("queen");
     const lost = screen.getByText("Material lost compared with the best move").nextSibling;
     expect(lost).toHaveTextContent("1 point");
-    expect(lost).toHaveTextContent(
+    // The hint is its own row under the value, spanning both columns.
+    expect(lost?.nextSibling).toHaveClass("facts__hint");
+    expect(lost?.nextSibling).toHaveTextContent(
       "How far your line ends behind the engine's best line over the same moves",
     );
     expect(screen.queryByRole("heading", { name: "Why" })).not.toBeInTheDocument();

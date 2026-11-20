@@ -42,10 +42,8 @@ export function FindingPanel({ detail, line, cursor, onCursor }: Props) {
           {facts.map((fact) => (
             <div key={fact.key} className="facts__row">
               <dt>{fact.label}</dt>
-              <dd>
-                {fact.value}
-                {fact.hint ? <span className="facts__hint">{fact.hint}</span> : null}
-              </dd>
+              <dd>{fact.value}</dd>
+              {fact.hint ? <dd className="facts__hint">{fact.hint}</dd> : null}
             </div>
           ))}
         </dl>
