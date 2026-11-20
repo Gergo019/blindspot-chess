@@ -38,7 +38,10 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - The demo analysis was complete 11 min after the start, about 7.5 min after the stack was up: 20 games, hanging piece in 5, a pattern. That is why the README's time estimate changed.
   - "Open localhost:8081", checked in a real browser: the **Playwright suite ran against this fresh stack: 10 passed** (including axe in both themes and no CSP violations).
   - The throwaway stack and its volume were removed afterwards (`docker compose down -v` with that project name only).
-- CI on PR #69: CI_RESULT
+- CI on PR #69: the first run's Backend job failed after 46 s with "Non-resolvable parent POM … spring-boot-starter-parent:pom:4.1.2 (absent)": Maven Central briefly reported the artifact missing. The PR changes no code; the same glitch hit the Compose job on #64. Re-running the failed jobs: all five green (Backend 1m32s, Analysis service 1m37s, Frontend 23 s, Docker Compose stack 1m15s, End-to-end (Playwright) 5m01s).
+
+**Open points / risks:**
+- **Maven Central glitches, twice now** (#64, #69): a parent POM reported "absent" for a minute fails the backend build. If it happens again, make CI resilient: let `actions/setup-java`'s Maven cache cover the parent POM, or retry the dependency step once.
 
 **After merge:** an annotated tag `v0.2.0` on the merge commit and a GitHub release "v0.2.0" with the CHANGELOG section as notes.
 
