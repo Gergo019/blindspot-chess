@@ -50,7 +50,8 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - `docker compose exec` health: Stockfish 19, depth 16, 1 thread, 64 MB.
   - The headers are present on `/`, on hashed assets and on proxied `/api` responses; `Server: nginx` carries no version.
 - **Headless Chrome against the running stack:** with "light" stored, the page comes up light (the hashed inline script ran under the CSP), with 32 pieces and Inter loaded; **0 `securitypolicyviolation` events** and no console messages.
-- CI on PR #62: CI_RESULT
+- CI on PR #62, green on the first run (after merging `main`: the PR at first conflicted with #59 in CHANGELOG and devlog, and GitHub runs no `pull_request` checks on a conflicting PR): Frontend 23 s, Backend 1m36s, Analysis service 2m19s, Docker Compose stack 1m18s. The Compose job printed `backend 127.0.0.1:8080->8080/tcp`, `db 127.0.0.1:5432->5432/tcp`, `frontend 127.0.0.1:8081->8080/tcp` and `analysis-service 8000/tcp` (unpublished), read the analysis service's health through `docker compose exec`, and passed the header checks.
+- **Follow-up from #59:** no `@dependabot recreate` was needed. Dependabot closed #58 by itself once the TypeScript rule was on `main` and opened **#61**, the same npm group without TypeScript 7 (8 updates, typescript-eslint 8.72.1 → 8.73.0, TypeScript stays at 6.0.3). All four CI jobs on #61 are green.
 
 **Open points / risks:**
 - A developer who called `localhost:8000` directly against the Compose stack now has to use `docker compose exec` or run the service on its own (documented).
