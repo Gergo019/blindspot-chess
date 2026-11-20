@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-20: Hold TypeScript 7 updates, GPL-3.0-or-later for the analysis service (PR #PRNUM)
+## 2026-11-20: Hold TypeScript 7 updates, GPL-3.0-or-later for the analysis service (PR #59)
 
 **Goal:** Two follow-ups from #50 before #51: unblock Dependabot's grouped npm PR (#58), and settle the licence question raised there (python-chess is GPL and imported by the analysis service).
 
@@ -26,14 +26,14 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
 - #58's failing job log: `npm error ERESOLVE could not resolve … While resolving: typescript-eslint@8.73.0 … Found: typescript@7.0.2`.
 - `dependabot.yml` parses; the npm entry has the new ignore rule.
 - GPL text: `diff -w` against Stockfish's `COPYING.txt` from the analysis-service image shows no difference.
-- CI on PR #PRNUM: CI_RESULT
+- CI on PR #59: CI_RESULT
 - After merge: CI_DEPENDABOT
 
 **Open points / risks:**
 - When typescript-eslint supports TypeScript 7, remove the ignore rule and upgrade TypeScript (and check the `tsconfig` options).
 - ADR 0007's "the project's own code stays MIT" now reads as "the frontend stays MIT"; per the instruction, ADR 0007 was not edited, and the ADR 0002 amendment is the record.
 
-**Links:** [#58](https://github.com/Gergo019/blindspot-chess/pull/58), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [ADR 0002](decisions/0002-python-analysis-service.md#amendment-2026-11-20-licence-of-the-analysis-service), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)
+**Links:** [#58](https://github.com/Gergo019/blindspot-chess/pull/58), [PR #59](https://github.com/Gergo019/blindspot-chess/pull/59), [ADR 0002](decisions/0002-python-analysis-service.md#amendment-2026-11-20-licence-of-the-analysis-service), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)
 
 ## 2026-11-20: Frontend scaffold, theme and app shell (#50 / PR #54)
 
