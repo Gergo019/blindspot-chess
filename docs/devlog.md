@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-20: Findings screen (#24 / PR #PRNUM)
+## 2026-11-20: Findings screen (#24 / PR #64)
 
 **Goal:** The first real screen (ADR 0007): see the blind-spot report and every finding on a board, step through the evidence, and check where it came from. Read-only; no drills yet.
 
@@ -59,14 +59,14 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - `/` selects `/findings/1`; `/findings/999999` shows "This finding does not exist, or it is not one of yours.";
   - **0 CSP violations**; the only console entry is the browser's own network log of that deliberate 404.
 - Screenshots: `docs/images/findings-screen-dark.png` (before the mistake) and `findings-screen-light.png` (one evidence move in).
-- CI on PR #PRNUM: CI_RESULT
+- CI on PR #64: CI_RESULT
 
 **Open points / risks:**
 - **Playwright (#52)** will cover the same flows in a real browser in CI; the screen tests here run in jsdom with react-chessboard's layout stubbed.
 - On narrow screens the panel stacks under the board as in #50; the findings screen was not screenshot-checked at phone width yet. #52 adds a narrow-viewport scenario.
 - The move list replays the game from the start; a game that does not start from the standard position (none are imported today) would show no SAN there, while the finding itself still works from its `fenBefore`.
 
-**Links:** [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [#51](https://github.com/Gergo019/blindspot-chess/issues/51), [#52](https://github.com/Gergo019/blindspot-chess/issues/52), [chess.js](https://github.com/jhlywa/chess.js)
+**Links:** [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [PR #64](https://github.com/Gergo019/blindspot-chess/pull/64), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [#51](https://github.com/Gergo019/blindspot-chess/issues/51), [#52](https://github.com/Gergo019/blindspot-chess/issues/52), [chess.js](https://github.com/jhlywa/chess.js)
 
 ## 2026-11-20: Read-only findings and patterns API (#51 / PR #63)
 
