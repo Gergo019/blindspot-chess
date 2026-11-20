@@ -31,6 +31,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!-- OpenAPI description of the read API at /api/docs (#51). Apache-2.0; 3.2.0 (2026-10-24) is
+             built against Spring Boot 4.1.2. API module only: no Swagger UI. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+            <version>3.2.0</version>
+        </dependency>
         <!-- RestClient.Builder for the analysis-service client (its own module since Boot 4) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

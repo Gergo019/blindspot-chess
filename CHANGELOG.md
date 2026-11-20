@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Read-only API (#51): `GET /api/patterns` (blind-spot report: distinct games with each motif among the last 20 analysed rapid games, sample size, threshold of 3), `GET /api/findings` (newest first, paged, filter by motif), `GET /api/findings/{id}` (FEN, played and best move, evidence line, facts, engine, game, and only a verified TEMPLATE explanation), `GET /api/games/{id}/moves`. Response records only, fetch joins (a page costs 3 queries whatever its size), RFC 9457 problem details without internals, GET only, no CORS; OpenAPI at `/api/docs` (springdoc 3.2.0, no UI)
 - `SECURITY.md` (#60): private vulnerability reporting (enabled on the repository), scope, and the local-use, no-authentication status
 - Security headers from nginx (#60): a Content-Security-Policy that allows only same-origin resources and the one inline script by its hash, with `frame-ancestors 'none'`; `X-Frame-Options`, `Permissions-Policy`; no nginx version. A unit test keeps the CSP hash and the nginx includes correct; CI checks the headers on the running container
 - `analysis-service/LICENSE`: the analysis service is GPL-3.0-or-later because it imports python-chess (GPL-3.0-or-later); the backend, the frontend and the rest of the repository stay MIT ([ADR 0002, amendment](docs/decisions/0002-python-analysis-service.md#amendment-2026-11-20-licence-of-the-analysis-service))

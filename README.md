@@ -143,6 +143,26 @@ cd analysis-service && docker build --target test -t analysis-test . && docker r
 
 Dark is the default; the toggle in the header switches to the light theme and the choice is remembered. For frontend development without Docker (Node 26, the version in `frontend/.nvmrc`), see [frontend](frontend/README.md).
 
+### Read API
+
+The backend serves a read-only JSON API under `/api` ([#51](https://github.com/Gergo019/blindspot-chess/issues/51)). The web app calls it on its own origin through nginx (http://localhost:8081/api/...), so there is no CORS configuration; the backend answers directly on http://localhost:8080/api/... too. The OpenAPI description is at [`/api/docs`](http://localhost:8081/api/docs).
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/patterns` | The blind-spot report: for every motif, in how many distinct games among the last 20 analysed rapid games it occurred, the sample size (always given, also below the threshold) and whether it reaches the pattern threshold of 3 games |
+| `GET /api/findings?motif=&page=&size=` | Findings, newest game first. `motif` is `HANGING_PIECE` or `ALLOWED_KNIGHT_FORK` (optional); `page` from 0; `size` 1 to 50 (default 20) |
+| `GET /api/findings/{id}` | One finding with what the board needs: `fenBefore`, the move `played` (UCI and SAN) and the engine's `best` move (UCI), the `evidenceLineUci` (continuing after the played move), the checked `facts`, the engine settings, the game (opponent, date, colour, Lichess link) and `explanation`, which is null unless a TEMPLATE explanation passed verification |
+| `GET /api/games/{id}/moves` | The game's half-moves with the engine's classification, for the move list |
+
+```bash
+curl -s localhost:8081/api/patterns
+curl -s "localhost:8081/api/findings?motif=HANGING_PIECE&size=5"
+```
+
+- **Moves are UCI plus the FEN they are played from.** SAN is included only where the analysis service stored it (the played move); the frontend derives notation for display.
+- **Whose data:** until there is sign-up, the configured player: the `demo` user with the demo profile, otherwise `LICHESS_USERNAME`. With neither, the report and the list are empty.
+- **Errors** are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details (`application/problem+json`): 400 for a bad parameter, 404 for an unknown id (or one of another player), 405 for anything but GET. They never contain exception messages or stack traces.
+
 ## Data model
 
 ```
