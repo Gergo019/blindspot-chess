@@ -4,7 +4,7 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
-## 2026-11-20: Playwright end-to-end tests (#52 / PR #PRNUM)
+## 2026-11-20: Playwright end-to-end tests (#52 / PR #65)
 
 **Goal:** Prove the findings screen works in a real browser against the real stack and the 20 demo games, in CI, including accessibility and the CSP.
 
@@ -57,14 +57,14 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - one wrong expectation in my test: after 21. Bf1 the f6 square is empty, since 20… Nd5 moved the knight.
   - then **10 of 10, and 50 of 50 with `--repeat-each=5 --workers=4`** (13.6 s).
 - Frontend unit tests: 97 green (1 new: the board as a labelled image with an inert inside); lint, types (app and e2e) and Prettier clean.
-- CI on PR #PRNUM: CI_RESULT
+- CI on PR #65: CI_RESULT
 
 **Open points / risks:**
 - The suite needs the full demo analysis (a few minutes on the runner); the job has a 30-minute timeout and the wait script 15 minutes.
 - Chromium only; Firefox and WebKit are in the image if needed later.
 - Cucumber (one or two scenarios of the coaching loop) is next, as planned in ADR 0007.
 
-**Links:** [#52](https://github.com/Gergo019/blindspot-chess/issues/52), [PR #PRNUM](https://github.com/Gergo019/blindspot-chess/pull/PRNUM), [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [Playwright](https://playwright.dev/), [axe-core](https://github.com/dequelabs/axe-core)
+**Links:** [#52](https://github.com/Gergo019/blindspot-chess/issues/52), [PR #65](https://github.com/Gergo019/blindspot-chess/pull/65), [#24](https://github.com/Gergo019/blindspot-chess/issues/24), [Playwright](https://playwright.dev/), [axe-core](https://github.com/dequelabs/axe-core)
 
 ## 2026-11-20: Findings screen (#24 / PR #64)
 
