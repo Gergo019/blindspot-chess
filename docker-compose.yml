@@ -1,5 +1,10 @@
 name: blindspot
 
+# For local use only (SECURITY.md): every published port is bound to 127.0.0.1, so nothing is reachable
+# from other machines on the network. The analysis service publishes no port at all; the backend
+# reaches it on the Compose network as http://analysis-service:8000. The default database password
+# in .env.example is for local use; change POSTGRES_PASSWORD before any deployment.
+
 services:
   db:
     # PostgreSQL with the pgvector extension available, in case explanations
@@ -11,7 +16,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-blindspot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-blindspot}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -46,7 +51,7 @@ services:
       LICHESS_IMPORT_BATCH_SIZE: ${LICHESS_IMPORT_BATCH_SIZE:-20}
       LICHESS_IMPORT_INTERVAL: ${LICHESS_IMPORT_INTERVAL:-1h}
     ports:
-      - "${BACKEND_PORT:-8080}:8080"
+      - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
 
   analysis-service:
     build: ./analysis-service
@@ -56,8 +61,8 @@ services:
       ENGINE_THREADS: ${ENGINE_THREADS:-1}
       ENGINE_HASH_MB: ${ENGINE_HASH_MB:-64}
       LLM_API_KEY: ${LLM_API_KEY:-}
-    ports:
-      - "${ANALYSIS_SERVICE_PORT:-8000}:8000"
+    # No published port (#60): only the backend calls it, over the Compose network. To call it
+    # yourself: docker compose exec analysis-service python -c "..." (see README).
     healthcheck:
       # The image has Python but no curl. Healthy once /health answers and finds Stockfish.
       test: ["CMD", "python", "-c", "import json, urllib.request; r = urllib.request.urlopen('http://localhost:8000/health', timeout=3); assert json.load(r)['engine'] == 'UP'"]
@@ -75,7 +80,7 @@ services:
     environment:
       BACKEND_ORIGIN: http://backend:8080
     ports:
-      - "${FRONTEND_PORT:-8081}:8080"
+      - "127.0.0.1:${FRONTEND_PORT:-8081}:8080"
     healthcheck:
       # nginx answers /healthz itself; the image has busybox wget but no curl.
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]

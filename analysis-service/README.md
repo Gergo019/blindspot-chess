@@ -79,7 +79,7 @@ Tests run inside the image, so they use the same pinned engine as production and
 ```bash
 cd analysis-service
 docker build --target test -t analysis-test . && docker run --rm analysis-test
-docker build -t analysis-service . && docker run --rm -p 8000:8000 analysis-service
+docker build -t analysis-service . && docker run --rm -p 127.0.0.1:8000:8000 analysis-service
 ```
 
 ## Run locally without Docker

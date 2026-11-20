@@ -68,7 +68,7 @@ cd ../../..
 
 # 2. Start the analysis service from its Dockerfile (the runtime image)
 docker build --target runtime -t blindspot-analysis-demo analysis-service
-docker run -d --rm --name blindspot-analysis-demo -p 58000:8000 blindspot-analysis-demo
+docker run -d --rm --name blindspot-analysis-demo -p 127.0.0.1:58000:8000 blindspot-analysis-demo
 
 # 3. Select and write the demo file and the report
 uv run --no-project --with-requirements tools/demo-data/requirements.txt python -I \

@@ -4,6 +4,62 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-20: Local-only ports, least-privilege CI, pinned actions, SECURITY.md (PR #62)
+
+**Goal:** Basic security hygiene before the first API (#51): nothing of the local stack is reachable from the network, CI has only the rights it needs and runs exactly the action code that was reviewed, there is a private way to report problems, and the web app sends tested security headers.
+
+**Changes:**
+- `docker-compose.yml`: db, backend and frontend publish on `127.0.0.1` only. **The analysis service publishes no port**; the backend reaches it at `http://analysis-service:8000` on the Compose network. `ANALYSIS_SERVICE_PORT` is removed from `.env.example`. A header comment says the stack is for local use and to change `POSTGRES_PASSWORD` before any deployment.
+- **README:** the stack is for local use; change `POSTGRES_PASSWORD` before any deployment. The analysis service's health is read with `docker compose exec`. Running the backend from the IDE now needs the analysis service started with `-p 127.0.0.1:8000:8000`, as documented. The `docker run -p` lines in `analysis-service/README.md` and `tools/demo-data/README.md` are now bound to `127.0.0.1` too.
+- **CI** (`.github/workflows/ci.yml`):
+  - top-level `permissions: contents: read`;
+  - every action pinned by full commit SHA with its version as a comment: `actions/checkout` v7.0.1, `actions/setup-java` v6.2.0, `actions/setup-node` v7.1.0 (no other actions are used; there is no setup-python);
+  - the Compose job checks the analysis service through `docker compose exec` and its health status;
+  - the Compose job checks that no port is bound to `0.0.0.0` or `[::]` and that the analysis service publishes none;
+  - the Compose job checks the security headers on the running frontend, including that `Server` carries no nginx version.
+- **`SECURITY.md`:** report privately through GitHub's private vulnerability reporting, **which was off for the repository and is now enabled**. Also: scope, out of scope, supported versions, and that the project is a local-use portfolio app without authentication yet.
+- **nginx security headers** (`frontend/nginx/security-headers.conf`, included at server level and in every location that sets its own headers):
+  - `Content-Security-Policy`: `default-src 'self'`; the inline theme script allowed by its SHA-256 hash; `style-src 'self'`; `img-src 'self' data:`; `font-src 'self'`; `connect-src 'self'`; `object-src 'none'`; `base-uri 'self'`; `form-action 'self'`; `frame-ancestors 'none'`;
+  - `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin` (both already in #50, now in the snippet);
+  - `X-Frame-Options: DENY`, `Permissions-Policy`, and `server_tokens off`.
+- **Test** `frontend/src/security.test.ts` (8 tests, node environment):
+  - every inline script in `index.html` is allowed by its hash, and there is no `'unsafe-inline'` or `'unsafe-eval'`;
+  - the required directives are present;
+  - `nosniff`, `DENY` and `same-origin` are set;
+  - the snippet is included at server level and in **every location that has its own `add_header`**;
+  - `server_tokens off` is set.
+- `frontend/src/test/setup.ts` skips the DOM cleanup in node-environment tests.
+- Issue [#60](https://github.com/Gergo019/blindspot-chess/issues/60) "Security for the web app": the headers are listed as done, with the open items (same-origin `/api` without CORS and no stack traces in errors, both in #51; Spring Security when sign-up arrives).
+- CHANGELOG.
+
+**Decisions:**
+- **What #50 already shipped:** `X-Content-Type-Options` and `Referrer-Policy`, repeated by hand in two locations, with no test. CSP, `frame-ancestors`, `X-Frame-Options` and hiding the version were missing. All headers now come from one snippet, and the nginx inheritance trap (a location with its own `add_header` drops all inherited ones) is covered by a test instead of by care.
+- **The CSP hash is checked against `index.html`, not hard-coded twice.** Vite copies the inline script unchanged into `dist/index.html` (checked: identical bytes, same hash `sha256-cAFnl6AY…`), so the test hashes the source file. Changing the script without updating the hash fails CI.
+- **No `'unsafe-inline'` for styles:** React and react-chessboard set inline styles through the CSSOM, which CSP does not block. Checked in Chrome: zero violations (see Verification).
+- **Pinned to release SHAs at least two weeks old.** `setup-java`'s `v6` tag points to v6.3.0 (2026-11-14), so v6.2.0 (2026-11-04) is pinned instead; checkout's `v7` is v7.0.1 and setup-node's `v7` is v7.1.0. Each comment names the exact release tag.
+- **Dependabot keeps updating SHA-pinned actions.** GitHub's docs say nothing about SHA pins or comments, so this was checked in dependabot-core:
+  - `github_actions/update_checker.rb`: for a ref that looks like a commit SHA, it proposes the commit of the newest release;
+  - `file_updater/workflow_updater/version_commenter.rb`: it finds the old version from the most specific version tag of the old SHA and replaces it in the trailing comment.
+  So the comment must be the exact tag (`# v7.0.1`), as used here. The `github-actions` entry in `dependabot.yml` is unchanged; the first monthly run will confirm it.
+- **Private vulnerability reporting was enabled** (a repository setting, `PUT /repos/…/private-vulnerability-reporting`). Without it, the reporting route in `SECURITY.md` would not exist.
+
+**Verification:**
+- Frontend in the Node 26 container: lint and type check clean; 5 test files, 64 tests passed (8 new).
+- Full stack locally:
+  - `docker compose ps`: `127.0.0.1:5432`, `127.0.0.1:8080`, `127.0.0.1:8081`; the analysis service shows only `8000/tcp`, unpublished, and `curl localhost:8000` from the host fails.
+  - `docker compose exec` health: Stockfish 19, depth 16, 1 thread, 64 MB.
+  - The headers are present on `/`, on hashed assets and on proxied `/api` responses; `Server: nginx` carries no version.
+- **Headless Chrome against the running stack:** with "light" stored, the page comes up light (the hashed inline script ran under the CSP), with 32 pieces and Inter loaded; **0 `securitypolicyviolation` events** and no console messages.
+- CI on PR #62, green on the first run (after merging `main`: the PR at first conflicted with #59 in CHANGELOG and devlog, and GitHub runs no `pull_request` checks on a conflicting PR): Frontend 23 s, Backend 1m36s, Analysis service 2m19s, Docker Compose stack 1m18s. The Compose job printed `backend 127.0.0.1:8080->8080/tcp`, `db 127.0.0.1:5432->5432/tcp`, `frontend 127.0.0.1:8081->8080/tcp` and `analysis-service 8000/tcp` (unpublished), read the analysis service's health through `docker compose exec`, and passed the header checks.
+- **Follow-up from #59:** no `@dependabot recreate` was needed. Dependabot closed #58 by itself once the TypeScript rule was on `main` and opened **#61**, the same npm group without TypeScript 7 (8 updates, typescript-eslint 8.72.1 → 8.73.0, TypeScript stays at 6.0.3). All four CI jobs on #61 are green.
+
+**Open points / risks:**
+- A developer who called `localhost:8000` directly against the Compose stack now has to use `docker compose exec` or run the service on its own (documented).
+- The first Dependabot `github-actions` run after this PR shows whether SHA updates arrive as expected.
+- Testcontainers still maps random host ports on all interfaces during backend tests; that is a test-time, short-lived exposure and out of scope here.
+
+**Links:** [#60](https://github.com/Gergo019/blindspot-chess/issues/60), [PR #62](https://github.com/Gergo019/blindspot-chess/pull/62), [SECURITY.md](../SECURITY.md), [dependabot-core version commenter](https://github.com/dependabot/dependabot-core/blob/main/github_actions/lib/dependabot/github_actions/file_updater/workflow_updater/version_commenter.rb)
+
 ## 2026-11-20: Hold TypeScript 7 updates, GPL-3.0-or-later for the analysis service (PR #59)
 
 **Goal:** Two follow-ups from #50 before #51: unblock Dependabot's grouped npm PR (#58), and settle the licence question raised there (python-chess is GPL and imported by the analysis service).
