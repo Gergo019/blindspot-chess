@@ -59,7 +59,7 @@ Entry format: Goal, Changes, Decisions (with the reason and the alternative reje
   - `/` selects `/findings/1`; `/findings/999999` shows "This finding does not exist, or it is not one of yours.";
   - **0 CSP violations**; the only console entry is the browser's own network log of that deliberate 404.
 - Screenshots: `docs/images/findings-screen-dark.png` (before the mistake) and `findings-screen-light.png` (one evidence move in).
-- CI on PR #64: CI_RESULT
+- CI on PR #64, green on the first run: Frontend 25 s (lint, Prettier, types, 95 tests, build), Backend 1m53s, Analysis service 2m05s, Docker Compose stack 1m16s.
 
 **Open points / risks:**
 - **Playwright (#52)** will cover the same flows in a real browser in CI; the screen tests here run in jsdom with react-chessboard's layout stubbed.
