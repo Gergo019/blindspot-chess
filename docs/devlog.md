@@ -4,6 +4,43 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-20: Product rules as Cucumber features (PR #68)
+
+**Goal:** Write the rules that decide what a player sees as readable specifications that are also tests: the pattern threshold, verified explanations only, and no report for mistakes without a detector (ADR 0007's plan: one or two Cucumber scenarios after Playwright).
+
+**Changes:**
+- **Three features** in `backend/src/test/resources/features/`, in product language with no class names, SQL or endpoints:
+  - `pattern_threshold.feature`: 2 vs 3 games; two mistakes in one game count once; the 21st-newest game is outside the window; blitz, unanalysed and failed games do not count; the sample size is reported with 7, 4, 25 and 0 analysed games.
+  - `verified_explanations.feature`: a template that passed verification is shown. A template that failed or is pending, and facts-only or free AI text, are not. With several explanations only the verified template is shown; without any, the mistake and its moves still are.
+  - `undetected_motifs.feature`: allowed knight forks on record are not reported while there is no detector; hanging pieces are listed with 0.
+  - 18 scenarios in all, with Scenario Outlines where they read better.
+- **Glue** in `src/test/java/.../features/`:
+  - `BusinessRulesIT` is a JUnit Platform suite (engine `cucumber`, `features` on the classpath, `pretty` plugin, publishing quiet). Its name ends in IT, so **Failsafe runs it in the existing Backend job**.
+  - `CucumberSpringConfiguration`: `@CucumberContextConfiguration` + `@SpringBootTest(RANDOM_PORT)`, PostgreSQL 17 through Testcontainers with `@ServiceConnection`. The container is started in a static block, because the JUnit Testcontainers extension does not run under the Cucumber engine.
+  - `BusinessRuleSteps`: each scenario truncates the tables and creates the configured player; data is seeded through the repositories, never the analysis service; every check is an HTTP GET on `/api/patterns` or `/api/findings/{{id}}`. Parameter types turn the product words into the model (`template` / `facts-only AI` / `free AI`; `passed` / `failed` / `is still pending`).
+- `backend/pom.xml`: `cucumber-bom` 8.0.4 imported; `cucumber-java`, `cucumber-spring`, `cucumber-junit-platform-engine`, `junit-platform-suite` (test scope); `junit-jupiter.version` 6.1.3.
+- README "Product rules as features"; CONTRIBUTING: the features are where rules about what a player sees are specified, and a rule change changes its feature in the same PR. CHANGELOG.
+
+**Decisions:**
+- **Cucumber-JVM 8.0.4** (MIT, 2026-10-02); 8.1.0 (2026-11-15) is newer than two weeks. `cucumber-spring` 8.0.4 is built against Spring 7.0.9 with Spring as a provided dependency; Boot 4.1.2 brings 7.0.10.
+- **JUnit 6.1.3 instead of Boot's 6.0.3:** every Cucumber 8.x engine (8.0.0 to 8.0.4) is compiled against JUnit 6.1.3, and an engine built for a newer platform API can fail at runtime on an older one. 6.1.3 (2026-08-07) passes the age rule and is a minor upgrade within JUnit 6; the whole backend now uses it (verified below). Rejected: Cucumber 7.x, which targets the JUnit 5 platform. Remove the override when Boot manages 6.1 or later.
+- **Through HTTP, not services:** the features state what the player sees, so they check the API the web app uses. Seeding through repositories keeps them independent of the analysis service and Stockfish.
+
+**Verification:**
+- `mvn verify -Dit.test=BusinessRulesIT`: 18 scenarios green on the first run.
+- **The features can fail:** each mutation was made on a WIP commit with the Edit tool, run, then reverted:
+  - run 1, two mutations together: pattern threshold 3 → 2 and the report without the "has a detector" filter. 5 failures: the 2-game example, two mistakes in one game, the 21st game and ineligible games (threshold), and the knight-fork scenario (filter);
+  - run 2: showing templates that failed instead of those that passed. 3 failures (the failed-template example, the several-explanations scenario, and the passed-template scenario).
+  The working tree was clean after each revert.
+- Full `mvn verify` with JUnit 6.1.3: **77 unit tests and 83 integration tests** (the 65 existing ITs plus the 18 scenarios), all green.
+- CI on PR #68: CI_RESULT
+
+**Open points / risks:**
+- When #26 adds the knight-fork detector, `undetected_motifs.feature` changes with it (the motif is then reported).
+- The JUnit override must be revisited with the next Spring Boot upgrade.
+
+**Links:** [PR #68](https://github.com/Gergo019/blindspot-chess/pull/68), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [Cucumber-JVM](https://github.com/cucumber/cucumber-jvm)
+
 ## 2026-11-20: Playwright end-to-end tests (#52 / PR #65)
 
 **Goal:** Prove the findings screen works in a real browser against the real stack and the 20 demo games, in CI, including accessibility and the CSP.
