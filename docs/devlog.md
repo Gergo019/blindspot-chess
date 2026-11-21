@@ -4,6 +4,42 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-21: CI resilience against Maven Central "absent" errors (#70 / PR #71)
+
+**Goal:** Stop a brief Maven Central outage from failing CI. On 2026-11-20 three runs failed before any test ran, with `org.springframework.boot:spring-boot-starter-parent:pom:4.1.2 (absent): Could not find artifact … in central`; each passed when re-run unchanged.
+
+**Changes:**
+- `.github/workflows/ci.yml`, Backend job: a new step **"Resolve dependencies (one retry)"** before the build runs `mvn -B dependency:go-offline`. On failure it emits a `::warning::`, waits 30 s and runs once more with **`-U`**; a second failure fails the step.
+- `backend/Dockerfile`: the same single retry on `dependency:go-offline`, with `-U`. This Dockerfile is built by the Docker Compose and End-to-end (Playwright) jobs.
+
+**Decisions:**
+- **The Maven cache was not the cause.** The question was whether `actions/setup-java`'s Maven cache had stored a "not found". The logs of all three failures say no:
+  - #64, Docker Compose stack: inside `docker build`, so no CI cache at all;
+  - `main` 2eac4e9 (#68 merge), Backend: `maven cache is not found`;
+  - #69 (PR), Backend: `maven cache is not found`.
+  In each case Maven started from an empty local repository, and Central answered "not found" for an artifact that exists. The cache key is the hash of `pom.xml`, which those PRs had changed. `setup-java` adds `-ntp`, so the logs show no download attempts.
+- **The retry must use `-U`.** After a 404, Maven writes `*.lastUpdated` into the local repository and does not ask the remote again until the update interval (daily) has passed. Reproduced locally in the pinned Maven image against a local mirror (`jwebserver`):
+  - a 404 left `spring-boot-starter-parent-4.1.2.pom.lastUpdated`;
+  - with the POM then served, a plain retry failed with "was cached in the local repository and resolution is not reattempted until the update interval of central has elapsed or updates are forced";
+  - the retry with `-U` fetched the POM.
+  (That run then stopped at the POM's own parent, which the test mirror did not serve; the fetch past the cached 404 was the point.)
+- **One retry after 30 s, not more:** the observed outages were short (each re-run minutes later passed). A longer loop would only delay a real failure, such as a wrong version or an artifact that really is missing.
+- **A separate step** makes a retry visible in the run summary (the warning annotation) and keeps the retry out of `mvn verify`, so test failures are never retried.
+
+**Verification:**
+- Both scripts were run exactly as they are in the files: the step text extracted from `ci.yml`, and the `RUN` command from the Dockerfile. They ran against a stand-in `mvn` that records its calls:
+  - first call fails → second call `mvn -B [-q] -U dependency:go-offline` succeeds → exit 0;
+  - both calls fail → exit 1 after exactly one retry.
+- `docker build --no-cache backend`: builds (232 s locally).
+- CI on PR #71 (160ea8f), all five jobs green: the new step took 34 s with no retry needed, the build step 121 s (Backend job 2m45s); Analysis service 2m14s, Frontend 26 s, Docker Compose stack 1m16s, End-to-end (Playwright) 7m31s.
+- Separately, the red `main` run for 2eac4e9 was re-run unchanged: all five jobs green.
+
+**Open points / risks:**
+- `mvn verify` can still download things `dependency:go-offline` does not resolve (for example some test-time plugin dependencies). They are not retried; if that ever fails the same way, the first step's local repository already holds everything that was resolved.
+- If Central's outages get longer than about half a minute, consider a mirror (a cache proxy) rather than more retries.
+
+**Links:** [#70](https://github.com/Gergo019/blindspot-chess/issues/70), [PR #71](https://github.com/Gergo019/blindspot-chess/pull/71)
+
 ## 2026-11-21: Release v0.2.0 (PR #69)
 
 **Goal:** Tag the web app as v0.2.0: everything since v0.1.0, with the README showing the product as it is today and a quick start that works on a fresh clone.
