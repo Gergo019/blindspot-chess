@@ -36,7 +36,8 @@ import io.github.gergo019.blindspot.lichess.LichessImportJob;
  * nothing. The analysis job is off here; analysing all demo games is not part
  * of CI.
  */
-@SpringBootTest(properties = "blindspot.analysis.job.enabled=false")
+@SpringBootTest(properties = { "blindspot.analysis.job.enabled=false",
+        "blindspot.training.drill-preparation.enabled=false" })
 @ActiveProfiles("demo")
 @Testcontainers
 class DemoDataIT {

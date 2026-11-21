@@ -19,6 +19,12 @@ public class AnalysisFailedException extends RuntimeException {
         /** The service accepted the connection but did not answer within the read timeout. */
         TIMEOUT,
         /**
+         * {@code POST /judge} only: the service works, but judging the position took longer than its time
+         * budget (HTTP 503 with {@code detail.reason = JUDGE_BUDGET_EXCEEDED}). No verdicts were produced; the
+         * position can be tried again later (#36).
+         */
+        BUDGET_EXCEEDED,
+        /**
          * The service answered 2xx, but with no body, a body that cannot be
          * read, or content the backend cannot store (an unknown
          * classification or motif, values the domain rules or the database

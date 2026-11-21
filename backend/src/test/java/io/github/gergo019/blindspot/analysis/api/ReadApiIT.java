@@ -60,6 +60,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "blindspot.lichess.importer.enabled=false", "blindspot.analysis.job.enabled=false",
+        "blindspot.training.drill-preparation.enabled=false",
         "blindspot.lichess.username=Player1", "spring.jpa.properties.hibernate.generate_statistics=true" })
 @Testcontainers
 class ReadApiIT {

@@ -46,6 +46,10 @@ import io.github.gergo019.blindspot.game.GameEnums.PieceColor;
 import io.github.gergo019.blindspot.game.GameEnums.Speed;
 import io.github.gergo019.blindspot.game.GameRepository;
 import io.github.gergo019.blindspot.lichess.LichessImportService;
+import io.github.gergo019.blindspot.training.DrillPreparationJob;
+import io.github.gergo019.blindspot.training.DrillPreparationService;
+import io.github.gergo019.blindspot.training.DrillRepository;
+import io.github.gergo019.blindspot.training.MoveVerdict;
 
 import com.sun.net.httpserver.HttpServer;
 
@@ -60,7 +64,8 @@ import tools.jackson.databind.json.JsonMapper;
  * same game the way production does: imported from a (recorded-format)
  * Lichess export, stored PENDING, analysed by the background job.
  */
-@SpringBootTest(properties = { "blindspot.lichess.importer.enabled=false", "blindspot.analysis.job.enabled=false" })
+@SpringBootTest(properties = { "blindspot.lichess.importer.enabled=false", "blindspot.analysis.job.enabled=false",
+        "blindspot.training.drill-preparation.enabled=false" })
 @Testcontainers
 @ExtendWith(OutputCaptureExtension.class)
 class AnalysisEndToEndIT {
@@ -128,6 +133,8 @@ class AnalysisEndToEndIT {
     @Autowired MistakeFindingRepository findings;
     @Autowired TransactionTemplate tx;
     @Autowired JsonMapper json;
+    @Autowired DrillPreparationJob drillPreparationJob;
+    @Autowired DrillRepository drills;
 
     @Test
     void knownGameComesBackWithAReplayableHangingPieceFinding() {
@@ -213,6 +220,38 @@ class AnalysisEndToEndIT {
 
         // Nothing left to do: a second run analyses nothing.
         assertThat(analysisJob.runOnce().analysed()).isZero();
+    }
+
+    @Test
+    void aFindingBecomesADrillWithAVerdictForEveryLegalMove() {
+        // #36: the drill-preparation job asks the real service to judge the position before 3. Nd4??.
+        User user = users.save(TestData.user("e2e-drill"));
+        ChessAccount account = accounts.save(TestData.lichessAccount(user));
+        Game game = games.save(new Game(account, "e2e-drill", Instant.parse("2026-11-21T12:00:00Z"), Speed.RAPID,
+                true, PieceColor.WHITE, GameResult.LOSS, KNIGHT_GAME));
+        assertThat(analysisService.analyzeGame(game.getId())).isEqualTo(AnalysisService.Outcome.DONE);
+
+        DrillPreparationJob.RunResult run = drillPreparationJob.runOnce();
+        assertThat(run.serviceUnavailable()).isFalse();
+        assertThat(run.count(DrillPreparationService.Outcome.PREPARED)).isPositive();
+
+        record StoredDrill(String fen, String solution, java.util.Map<String, MoveVerdict> verdicts,
+                java.util.List<String> accepted, String engine, int depth) {
+        }
+        StoredDrill drill = tx.execute(s -> drills.findAll().stream()
+                .filter(d -> d.getUser().getId().equals(user.getId()))
+                .map(d -> new StoredDrill(d.getFen(), d.getSolutionUci(), java.util.Map.copyOf(d.getVerdicts()),
+                        d.acceptedMoves(), d.getVerdictEngine().version(), d.getVerdictEngine().depth()))
+                .findFirst().orElseThrow());
+        MoveEvaluation mistake = evaluations.findByGameIdOrderByPlyAsc(game.getId()).get(KNIGHT_PLY - 1);
+        assertThat(drill.fen()).isEqualTo(mistake.getFenBefore());
+        assertThat(drill.engine()).isEqualTo("Stockfish 19");
+        assertThat(drill.depth()).isEqualTo(16);
+        // After 1. e4 e5 2. Nf3 d6, White has 27 legal moves (counted with python-chess); each has a verdict.
+        assertThat(drill.verdicts()).hasSize(27);
+        assertThat(drill.verdicts().get("f3d4").accepted()).isFalse();
+        assertThat(drill.verdicts().get("f3d4").refutationUci()).startsWith("e5d4");
+        assertThat(drill.accepted()).isNotEmpty().contains(drill.solution()).doesNotContain("f3d4");
     }
 
     @Test

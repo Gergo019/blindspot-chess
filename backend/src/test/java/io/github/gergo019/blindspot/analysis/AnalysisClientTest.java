@@ -162,6 +162,78 @@ class AnalysisClientTest {
         }
     }
 
+    // ---- POST /judge (#36, #78) ----
+
+    static final String JUDGE_RESPONSE = """
+            {
+              "engine": { "name": "Stockfish", "version": "19", "depth": 16, "threads": 1, "hashMb": 64 },
+              "fen": "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
+              "sideToMove": "WHITE",
+              "acceptBelow": 0.1,
+              "verdicts": [
+                { "uci": "a1a8", "san": "Ra8#", "score": { "mate": 1 }, "drop": 0.0, "accepted": true,
+                  "refutationUci": "" },
+                { "uci": "a1a2", "san": "Ra2", "score": { "cp": 512 }, "drop": 0.0918, "accepted": true,
+                  "refutationUci": "g8f8 a2a8" }
+              ],
+              "futureField": "ignored"
+            }
+            """;
+
+    @Test
+    void judgeSendsTheFenAndMapsEveryVerdict() {
+        server.expect(requestTo("http://analysis-service/judge"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("{\"fen\":\"6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1\"}"))
+                .andRespond(withSuccess(JUDGE_RESPONSE, MediaType.APPLICATION_JSON));
+
+        var response = client.judge(new AnalyzeApi.JudgeRequest("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1"));
+
+        server.verify();
+        assertThat(response.engine().depth()).isEqualTo(16);
+        assertThat(response.acceptBelow()).isEqualByComparingTo("0.1");
+        assertThat(response.verdicts()).hasSize(2);
+        var mate = response.verdicts().get(0);
+        assertThat(mate.uci()).isEqualTo("a1a8");
+        assertThat(mate.san()).isEqualTo("Ra8#");
+        assertThat(mate.score()).isEqualTo(new ScoreDto(null, 1));
+        assertThat(mate.refutationUci()).isEmpty();
+        var rook = response.verdicts().get(1);
+        assertThat(rook.drop()).isEqualByComparingTo("0.0918");
+        assertThat(rook.accepted()).isTrue();
+        assertThat(rook.refutationUci()).isEqualTo("g8f8 a2a8");
+    }
+
+    @Test
+    void judgeOverItsTimeBudgetIsABudgetFailureNotAnOutage() {
+        server.expect(requestTo("http://analysis-service/judge"))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE).contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"detail":{"reason":"JUDGE_BUDGET_EXCEEDED","message":"Judging took longer than \
+                                the budget of 60 s: 61.2 s after 30 of 33 moves","budgetSeconds":60.0,\
+                                "elapsedSeconds":61.2,"movesJudged":30,"legalMoves":33}}"""));
+
+        assertThatThrownBy(() -> client.judge(new AnalyzeApi.JudgeRequest("fen")))
+                .isInstanceOf(AnalysisFailedException.class)
+                .hasMessageContaining("/judge")
+                .extracting(e -> ((AnalysisFailedException) e).getStatus(), e -> ((AnalysisFailedException) e).getKind())
+                .containsExactly(503, Kind.BUDGET_EXCEEDED);
+    }
+
+    @Test
+    void onlyThe503WithTheBudgetReasonIsABudgetFailure() {
+        String budget = "{\"detail\":{\"reason\":\"JUDGE_BUDGET_EXCEEDED\"}}";
+        assertThat(AnalysisClient.kindOf(503, budget)).isEqualTo(Kind.BUDGET_EXCEEDED);
+        // Another status with the same body, or a 503 that only mentions the words, is not.
+        assertThat(AnalysisClient.kindOf(500, budget)).isEqualTo(Kind.UNAVAILABLE);
+        assertThat(AnalysisClient.kindOf(503, "{\"detail\":\"Could not start Stockfish\"}"))
+                .isEqualTo(Kind.UNAVAILABLE);
+        assertThat(AnalysisClient.kindOf(503, "{\"detail\":\"JUDGE_BUDGET_EXCEEDED\"}")).isEqualTo(Kind.UNAVAILABLE);
+        assertThat(AnalysisClient.kindOf(503, "<html>Service Unavailable</html>")).isEqualTo(Kind.UNAVAILABLE);
+        assertThat(AnalysisClient.kindOf(503, "")).isEqualTo(Kind.UNAVAILABLE);
+        assertThat(AnalysisClient.kindOf(422, "{\"detail\":\"Not a legal position\"}")).isEqualTo(Kind.REJECTED);
+    }
+
     @Test
     void unreadableBodyIsAnInvalidResponse() {
         server.expect(requestTo("http://analysis-service/analyze"))
