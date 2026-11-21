@@ -117,7 +117,8 @@ public class AnalysisService {
         } catch (AnalysisFailedException e) {
             return switch (e.getKind()) {
                 case REJECTED -> fail(gameId, e);
-                case UNAVAILABLE -> release(gameId, e);
+                // BUDGET_EXCEEDED belongs to POST /judge; /analyze has no budget. Treated like an outage.
+                case UNAVAILABLE, BUDGET_EXCEEDED -> release(gameId, e);
                 case TIMEOUT -> retryOrFail(gameId, e);
                 case INVALID_RESPONSE -> invalidResponse(gameId, e);
             };

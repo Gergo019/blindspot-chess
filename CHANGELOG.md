@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Drills with stored per-move verdicts (#36, ADR 0008):
+  - **Migration `V5`:** `drill_move_verdicts` (one row per legal move, from `POST /judge`), the verdicts' engine settings and threshold on `drills`, `drills.task` with one drill per finding and task, and `drill_preparations`.
+  - **Answers:** `Drill.answer` looks the move up. Any move losing less than 0.1 is correct; a move without a verdict is refused as illegal, with no attempt recorded and the schedule unchanged. SM-2 scheduling is unchanged.
+  - **Preparation:** a background job (`DrillPreparationJob`) turns findings into "Find a safe move" drills, newest game first, and stores a drill with all its verdicts in one transaction.
+  - **Failures:**
+    - over the analysis service's time budget (503 `JUDGE_BUDGET_EXCEEDED`), timed out or unstorable: no verdicts kept, retried after `DRILL_PREPARATION_RETRY_AFTER` (default 1 h);
+    - rejected (422), or verdicts that accept the game's mistake (sanity rule): skipped for good;
+    - analysis service unavailable: the run stops and nothing is recorded.
+  - **Tests:** Cucumber features for the answer-checking rules (`drill_answers.feature`), and an end-to-end test that prepares a drill with the real analysis service.
+
 - Analysis service: `POST /judge` (#78), a verdict for every legal move of a drill position, for answer checking by lookup (ADR 0008):
   - **Per move:** score, drop in winning chances against the best judged move, accepted (drop < 0.1), and the refutation line as board evidence.
   - **Search:** each move is searched on its own (`searchmoves`) at the pinned depth from a cleared state.
