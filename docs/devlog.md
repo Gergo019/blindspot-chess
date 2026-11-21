@@ -4,6 +4,87 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-21: Release v0.2.0 (PR #69)
+
+**Goal:** Tag the web app as v0.2.0: everything since v0.1.0, with the README showing the product as it is today and a quick start that works on a fresh clone.
+
+**What v0.2.0 delivers** (since v0.1.0 on 2026-11-16):
+- **The web app** (#50, #51, #24): a read-only findings screen on a read-only API.
+  - the blind-spot report with its sample size;
+  - the findings with their own URLs;
+  - the board before the mistake, with your move in orange and the evidence in blue;
+  - the evidence line in SAN, stepped by click or keyboard;
+  - the best move on request, the game's moves, and the engine and detector behind each finding.
+- **Tests that prove it:** Playwright end to end against the real stack with the demo data, including axe in both themes (#52), and the product rules as Cucumber features (#68).
+- **Security** (#60, #62): local-only ports, the analysis service unpublished, tested security headers with a CSP, `SECURITY.md` with private reporting, least-privilege CI with actions pinned by SHA, and API errors without internals.
+- **Licences** (#59): the analysis service is GPL-3.0-or-later (python-chess); everything else stays MIT. `THIRD_PARTY_NOTICES.md` lists every bundled asset.
+
+**Changes in this PR:**
+- `CHANGELOG.md`: Unreleased moved to `[0.2.0] - 2026-11-21`, with a one-line summary, and grouped as **Added / Changed / Security**:
+  - **Security:** `SECURITY.md`, local-only ports, the security headers, the API's error handling, and the CI permissions and pins;
+  - **Changed:** the licence entry, which moved out of Added, and the JUnit 6.1.3 alignment.
+  - Compare links for 0.2.0 and Unreleased.
+- `README.md`:
+  - the status line for v0.2.0;
+  - the dark findings-screen screenshot directly under it, with one line on what it shows (it moved there from the "Web app" section);
+  - the roadmap with the v0.2.0 steps ticked and "Next: #26, then #34";
+  - the demo paragraph now says to open http://localhost:8081 (the SQL query stays as an alternative);
+  - the analysis time corrected from "3 to 4 minutes" to "4 to 8 minutes" (measured below).
+- **#68's devlog entry and CHANGELOG line** are included: #68 was merged on 6eed5a2 before that docs commit was pushed, so it is cherry-picked here, with #68's CI result filled in.
+
+**Verification:**
+- **Quick start on a fresh clone of `main` (2eac4e9)**, exactly as documented (`cp .env.example .env && docker compose up --build`, run detached). The only addition was `COMPOSE_PROJECT_NAME=blindspot-fresh`, so the clone got its own database volume instead of the existing local demo volume.
+  - The stack was up after 3 min 28 s (cold image builds), with http://localhost:8081 serving `<title>BlindSpot</title>`.
+  - The demo analysis was complete 11 min after the start, about 7.5 min after the stack was up: 20 games, hanging piece in 5, a pattern. That is why the README's time estimate changed.
+  - "Open localhost:8081", checked in a real browser: the **Playwright suite ran against this fresh stack: 10 passed** (including axe in both themes and no CSP violations).
+  - The throwaway stack and its volume were removed afterwards (`docker compose down -v` with that project name only).
+- CI on PR #69: the first run's Backend job failed after 46 s with "Non-resolvable parent POM … spring-boot-starter-parent:pom:4.1.2 (absent)": Maven Central briefly reported the artifact missing. The PR changes no code; the same glitch hit the Compose job on #64. Re-running the failed jobs: all five green (Backend 1m32s, Analysis service 1m37s, Frontend 23 s, Docker Compose stack 1m15s, End-to-end (Playwright) 5m01s).
+
+**Open points / risks:**
+- **Maven Central glitches, twice now** (#64, #69): a parent POM reported "absent" for a minute fails the backend build. If it happens again, make CI resilient: let `actions/setup-java`'s Maven cache cover the parent POM, or retry the dependency step once.
+
+**After merge:** an annotated tag `v0.2.0` on the merge commit and a GitHub release "v0.2.0" with the CHANGELOG section as notes.
+
+**Links:** [PR #69](https://github.com/Gergo019/blindspot-chess/pull/69), [CHANGELOG 0.2.0](../CHANGELOG.md), [v0.1.0](https://github.com/Gergo019/blindspot-chess/releases/tag/v0.1.0)
+
+## 2026-11-20: Product rules as Cucumber features (PR #68)
+
+**Goal:** Write the rules that decide what a player sees as readable specifications that are also tests: the pattern threshold, verified explanations only, and no report for mistakes without a detector (ADR 0007's plan: one or two Cucumber scenarios after Playwright).
+
+**Changes:**
+- **Three features** in `backend/src/test/resources/features/`, in product language with no class names, SQL or endpoints:
+  - `pattern_threshold.feature`: 2 vs 3 games; two mistakes in one game count once; the 21st-newest game is outside the window; blitz, unanalysed and failed games do not count; the sample size is reported with 7, 4, 25 and 0 analysed games.
+  - `verified_explanations.feature`: a template that passed verification is shown. A template that failed or is pending, and facts-only or free AI text, are not. With several explanations only the verified template is shown; without any, the mistake and its moves still are.
+  - `undetected_motifs.feature`: allowed knight forks on record are not reported while there is no detector; hanging pieces are listed with 0.
+  - 18 scenarios in all, with Scenario Outlines where they read better.
+- **Glue** in `src/test/java/.../features/`:
+  - `BusinessRulesIT` is a JUnit Platform suite (engine `cucumber`, `features` on the classpath, `pretty` plugin, publishing quiet). Its name ends in IT, so **Failsafe runs it in the existing Backend job**.
+  - `CucumberSpringConfiguration`: `@CucumberContextConfiguration` + `@SpringBootTest(RANDOM_PORT)`, PostgreSQL 17 through Testcontainers with `@ServiceConnection`. The container is started in a static block, because the JUnit Testcontainers extension does not run under the Cucumber engine.
+  - `BusinessRuleSteps`: each scenario truncates the tables and creates the configured player; data is seeded through the repositories, never the analysis service; every check is an HTTP GET on `/api/patterns` or `/api/findings/{{id}}`. Parameter types turn the product words into the model (`template` / `facts-only AI` / `free AI`; `passed` / `failed` / `is still pending`).
+- `backend/pom.xml`: `cucumber-bom` 8.0.4 imported; `cucumber-java`, `cucumber-spring`, `cucumber-junit-platform-engine`, `junit-platform-suite` (test scope); `junit-jupiter.version` 6.1.3.
+- README "Product rules as features"; CONTRIBUTING: the features are where rules about what a player sees are specified, and a rule change changes its feature in the same PR. CHANGELOG.
+
+**Decisions:**
+- **Cucumber-JVM 8.0.4** (MIT, 2026-10-02); 8.1.0 (2026-11-15) is newer than two weeks. `cucumber-spring` 8.0.4 is built against Spring 7.0.9 with Spring as a provided dependency; Boot 4.1.2 brings 7.0.10.
+- **JUnit 6.1.3 instead of Boot's 6.0.3:** every Cucumber 8.x engine (8.0.0 to 8.0.4) is compiled against JUnit 6.1.3, and an engine built for a newer platform API can fail at runtime on an older one. 6.1.3 (2026-08-07) passes the age rule and is a minor upgrade within JUnit 6; the whole backend now uses it (verified below). Rejected: Cucumber 7.x, which targets the JUnit 5 platform. Remove the override when Boot manages 6.1 or later.
+- **Through HTTP, not services:** the features state what the player sees, so they check the API the web app uses. Seeding through repositories keeps them independent of the analysis service and Stockfish.
+
+**Verification:**
+- `mvn verify -Dit.test=BusinessRulesIT`: 18 scenarios green on the first run.
+- **The features can fail:** each mutation was made on a WIP commit with the Edit tool, run, then reverted:
+  - run 1, two mutations together: pattern threshold 3 → 2 and the report without the "has a detector" filter. 5 failures: the 2-game example, two mistakes in one game, the 21st game and ineligible games (threshold), and the knight-fork scenario (filter);
+  - run 2: showing templates that failed instead of those that passed. 3 failures (the failed-template example, the several-explanations scenario, and the passed-template scenario).
+  The working tree was clean after each revert.
+- Full `mvn verify` with JUnit 6.1.3: **77 unit tests and 83 integration tests** (the 65 existing ITs plus the 18 scenarios), all green.
+- CI on PR #68 (merged commit 6eed5a2), all five jobs green: Backend 2m14s (83 integration tests, of which `BusinessRulesIT` 18), Analysis service 1m36s, Frontend 30 s, Docker Compose stack 1m23s, End-to-end (Playwright) 5m20s. This entry and the CHANGELOG line were pushed after the merge and reached `main` with the v0.2.0 release PR.
+
+**Open points / risks:**
+- When #26 adds the knight-fork detector, `undetected_motifs.feature` changes with it (the motif is then reported).
+- The JUnit override must be revisited with the next Spring Boot upgrade.
+- Cucumber warns that `@SelectClasspathResource("features")` should be `@SelectPackages("features")`; harmless, change it in the next PR that touches the features.
+
+**Links:** [PR #68](https://github.com/Gergo019/blindspot-chess/pull/68), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [Cucumber-JVM](https://github.com/cucumber/cucumber-jvm)
+
 ## 2026-11-20: Playwright end-to-end tests (#52 / PR #65)
 
 **Goal:** Prove the findings screen works in a real browser against the real stack and the 20 demo games, in CI, including accessibility and the CSP.

@@ -4,24 +4,34 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-21
+
+The web app: a read-only findings screen on a read-only API, tested end to end in a real browser, with the product rules written as executable features and the local stack hardened.
+
 ### Added
 
+- Product rules as Cucumber features (`backend/src/test/resources/features/`): when a repeated mistake is a pattern, that only verified template explanations are shown, and that mistakes without a detector are not reported. 18 scenarios through the real HTTP API against PostgreSQL, run by Failsafe in the Backend job (Cucumber-JVM 8.0.4; JUnit aligned to 6.1.3)
 - Playwright end-to-end tests (#52) against the real stack with the 20 demo games, in a pinned Playwright image: blind-spot card, findings list with URL/reload/Back, deep link, evidence line by chips and keys (checked square by square), best move and move list, narrow screen, theme, error state, and axe in both themes; every scenario fails on a CSP violation or console error. CI job "End-to-end (Playwright)" uploads the report, traces and stack logs on failure
 - Findings screen (#24): the blind-spot report (count and sample size always shown; below the threshold it says so), the findings list (newest first, paged, `/findings/:id` deep links), the board before the mistake with your move as an orange arrow and the evidence in blue (squares as rings, arrows with a dark halo), the evidence line as SAN chips derived with chess.js and stepped with ← → Home End, "Show the best move", the facts (every fact type has a renderer; "Material lost" says whether it is measured against the best move or in the exchange on the square, ADR 0004), the explanation only when the API returns one, the game's moves with classifications, and the engine and detector in the footer; loading, empty and error states without server details. Animations follow `prefers-reduced-motion`
 - Read-only API (#51): `GET /api/patterns` (blind-spot report, listing only motifs that have a detector: distinct games with each motif among the last 20 analysed rapid games, sample size, threshold of 3), `GET /api/findings` (newest first, paged, filter by motif), `GET /api/findings/{id}` (FEN, played and best move, evidence line, facts, engine, game, and only a verified TEMPLATE explanation), `GET /api/games/{id}/moves`. Response records only, fetch joins (a page costs 3 queries whatever its size), RFC 9457 problem details without internals, GET only, no CORS; OpenAPI at `/api/docs` (springdoc 3.2.0, no UI)
-- `SECURITY.md` (#60): private vulnerability reporting (enabled on the repository), scope, and the local-use, no-authentication status
-- Security headers from nginx (#60): a Content-Security-Policy that allows only same-origin resources and the one inline script by its hash, with `frame-ancestors 'none'`; `X-Frame-Options`, `Permissions-Policy`; no nginx version. A unit test keeps the CSP hash and the nginx includes correct; CI checks the headers on the running container
-- `analysis-service/LICENSE`: the analysis service is GPL-3.0-or-later because it imports python-chess (GPL-3.0-or-later); the backend, the frontend and the rest of the repository stay MIT ([ADR 0002, amendment](docs/decisions/0002-python-analysis-service.md#amendment-2026-11-20-licence-of-the-analysis-service))
 - Web app shell (#50): React 19 + TypeScript (strict) with Vite, ESLint, Prettier and Vitest; header with Findings / Games / Drills (disabled), the board (react-chessboard, starting position) with legend and keyboard hint, an empty side panel, and a dark (default) and light theme remembered per browser. A unit test checks WCAG AA contrast for every theme colour pair; board highlights are rings between dark halo rings because the meaning colours fail as fills (ADR 0007). Served by nginx (non-root, pinned by digest) on port 8081 with `/api` proxied to the backend; a `frontend` service in Docker Compose with a healthcheck; CI job "Frontend (lint + test + build)"; Dependabot for npm
 - `THIRD_PARTY_NOTICES.md`: licences of the bundled piece set (Cburnett, BSD), font (Inter, OFL-1.1), libraries and Stockfish
 
 ### Changed
 
 - The board is one labelled image for assistive technology and its inside is inert: react-chessboard had made every piece an unnamed, focusable "draggable" button (25 to 32 tab stops on a read-only board), found by axe (#52). The board caption is a `role="status"` live region
-- Docker Compose publishes every port on `127.0.0.1` only, and the analysis service publishes no port; `ANALYSIS_SERVICE_PORT` is gone from `.env.example` (#60)
-- CI runs with `permissions: contents: read`, and every action is pinned by commit SHA with its version as a comment (#60)
+- Licence: the analysis service is GPL-3.0-or-later (`analysis-service/LICENSE`) because it imports python-chess (GPL-3.0-or-later); the backend, the frontend and the rest of the repository stay MIT ([ADR 0002, amendment](docs/decisions/0002-python-analysis-service.md#amendment-2026-11-20-licence-of-the-analysis-service))
+- The backend's tests use JUnit 6.1.3 instead of Spring Boot's 6.0.3 (the Cucumber engine is built against it)
 - Dependabot holds TypeScript major updates for the frontend: typescript-eslint supports only TypeScript below 6.1, so TypeScript 7 broke the grouped npm PR (#58)
 - Roadmap: the read-only findings screen comes before Phase 2's detectors; frontend decisions (react-chessboard, licences, layout, theme) recorded in [ADR 0007](docs/decisions/0007-frontend-board-and-visual-identity.md) (#49)
+
+### Security
+
+- `SECURITY.md` (#60): private vulnerability reporting (enabled on the repository), scope, and the local-use, no-authentication status
+- Docker Compose publishes every port on `127.0.0.1` only, and the analysis service publishes no port; `ANALYSIS_SERVICE_PORT` is gone from `.env.example` (#60)
+- Security headers from nginx (#60): a Content-Security-Policy that allows only same-origin resources and the one inline script by its hash, with `frame-ancestors 'none'`; `X-Frame-Options`, `Permissions-Policy`; no nginx version. A unit test keeps the CSP hash and the nginx includes correct; CI checks the headers on the running container
+- The read API (#51) answers errors as RFC 9457 problem details without exception messages or stack traces, accepts GET only, and has no CORS configuration (same-origin through nginx); all tested
+- CI runs with `permissions: contents: read`, and every action is pinned by commit SHA with its version as a comment (#60)
 
 ## [0.1.0] - 2026-11-16
 
@@ -79,5 +89,6 @@ Phase 1: import, analysis, hanging-piece detection and demo data. No user interf
 - Analysis-service CI job ran leftover host steps with an unpinned Ubuntu Stockfish after a merge; it now only builds and tests the image
 - Stray `FROM python:3.15-slim` line at the top of the analysis-service Dockerfile
 
-[Unreleased]: https://github.com/Gergo019/blindspot-chess/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Gergo019/blindspot-chess/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Gergo019/blindspot-chess/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Gergo019/blindspot-chess/releases/tag/v0.1.0
