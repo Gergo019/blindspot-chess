@@ -24,6 +24,16 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
+      - name: Resolve dependencies (one retry)
+        # Maven Central has answered "not found" for existing artifacts (the Spring Boot parent POM) for a
+        # few minutes at a time (#70). A plain retry would stop at Maven's cached "not found" in the local
+        # repository (*.lastUpdated), so the retry forces an update check with -U.
+        run: |
+          mvn -B dependency:go-offline || {
+            echo "::warning::Dependency resolution failed; retrying once in 30 s with -U (#70)"
+            sleep 30
+            mvn -B -U dependency:go-offline
+          }
       - name: Build, unit and integration tests
         run: mvn -B verify
 
