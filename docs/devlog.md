@@ -4,6 +4,71 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-21: Drills with accepted moves and per-move verdicts (#36 / PR #81)
+
+**Goal:** A drill accepts every good-enough move, not only the engine's first choice (finding A10 of the 2026-11-14 review). Every legal move of its position has a stored verdict from `POST /judge` (#78), answers are checked by lookup, illegal moves are refused, and a background job prepares drills from findings. Part b of #36, for the learning journey (ADR 0008).
+
+**Changes:**
+- **`V5__drill_verdicts.sql`:**
+  - `drill_move_verdicts`: one row per legal move, PK `(drill_id, move_uci)`, exactly one score.
+  - The verdicts' engine version, depth, threads, hash and `accept_below` on `drills`.
+  - `drills.task`, with unique `(user_id, finding_id, task)` instead of `(user_id, finding_id)`.
+  - `drill_preparations`, with a CHECK that `PENDING` has a retry time and `SKIPPED` has none.
+  - The migration refuses to run if `drills` has rows (nothing created drills before), rather than inventing verdicts.
+- **`training`:**
+  - `Judgement` (the checked `/judge` result) and `MoveVerdict` (the stored row, an embeddable record in an element-collection map keyed by UCI).
+  - `Drill` gains the task, the verdicts and their engine settings. `answer` looks the move up, and `IllegalMoveException` covers a move with no verdict. `fromFinding` enforces the sanity rule.
+  - `DrillService.answer`; `DrillPreparation` and its repository with the id query; `DrillPreparationService`, `DrillPreparationJob`, `DrillPreparationScheduler` and `DrillPreparationProperties`.
+- **`analysis`:**
+  - `AnalysisClient.judge` shares the error mapping with `analyze`.
+  - A new `Kind.BUDGET_EXCEEDED` for a 503 whose `detail.reason` is `JUDGE_BUDGET_EXCEEDED`.
+  - `AnalysisService` treats that kind like an outage (`/analyze` never sends it).
+  - `AnalyzeApi` gains the `/judge` records.
+- **Settings:** `blindspot.training.drill-preparation.*` (`DRILL_PREPARATION_BATCH_SIZE` 5, `_INTERVAL` 60 s, `_RETRY_AFTER` 1 h), in `application.yml`, `.env.example` and Compose. The scheduler pool goes from 2 to 3.
+- **Tests:** `drill_answers.feature` with `DrillAnswerSteps`; `DrillTest` rewritten (22); `DrillPreparationIT` (new, 9); a drill test in `AnalysisEndToEndIT`; 5 more `SchemaIT` tests; 3 `/judge` tests in `AnalysisClientTest`; `TestData.forkJudgement()`. Every Spring test context switches the new job off.
+- **Docs:** `README.md` (data model, drills, the Cucumber list, roadmap) and `CHANGELOG.md`.
+
+**Decisions:**
+- **The lookup is the legality check.** Every legal move has a verdict, so a move without one is illegal. The alternative, a Java chess library, was rejected: none is maintained on Maven Central (see `AnalysisEndToEndIT`), and it would be a second source of truth for the rules.
+- **An illegal answer changes nothing:** the exception is thrown before any state changes, no attempt row is written, and the SM-2 values stay as they were. The Cucumber scenario and `DrillTest` check this.
+- **The verdict response is checked before anything is stored** (`Judgement`):
+  - same position as requested; unique moves; at most 4 decimals;
+  - `accepted` agrees with `drop < acceptBelow`; at least one accepted move;
+  - a verdict for the game's move.
+
+  A violation is treated like an unreadable response (retried later, logged at ERROR), because it means backend and service disagree.
+- **Budget exceeded: retry after 1 hour, no cap on attempts.** The analysis service is shared with the analysis job, so a budget failure most likely means it was busy, and a later try can succeed. The attempts are counted, so a cap can be added if one position keeps failing.
+  - Rejected: retrying in the next run (one minute of Stockfish every minute for a position that is always too slow).
+  - Rejected: skipping at once (the task asked for a retry).
+- **422 and the sanity rule skip for good**, with the reason recorded: both would fail the same way again.
+- **An unavailable service stops the run and records nothing**, like the analysis job, but without its back-off. With a one-minute interval and one call per run, that is cheap; a back-off can follow if the logs get noisy.
+- **One drill per finding and task, prepared for every user.** The user comes from the finding's game. `FIND_SAFE_MOVE` only; "See the capture" is its own change (ADR 0008).
+  - For that change: the position after the mistake is the next half-move's `fen_before`, but that row does not exist when the game ended right after the mistake (resignation), so that change must handle it.
+- **`chances_drop`** instead of `drop`, the name in #36 and ADR 0008: `DROP` is a reserved word in PostgreSQL.
+- **Training reads findings through the `EntityManager` and one native id query, not the analysis repositories** (ADR 0008, bounded contexts).
+- **The Cucumber steps answer through `DrillService`, not HTTP**, because no drill endpoint exists yet. The feature says so, and the steps move to HTTP with the lesson API.
+
+**Verification:**
+- Local, in the pinned Maven image (`maven:3.9-eclipse-temurin-25@sha256:93b8a14e…`), with the repo root, the Docker socket and `TESTCONTAINERS_HOST_OVERRIDE`: `mvn verify` passed, **96 unit and 106 integration tests**.
+  - A targeted re-run confirmed the new tests ran: `AnalysisEndToEndIT` 4 (the new one prepares a drill with the real service: 27 legal moves judged, the game's Nd4?? rejected and refuted by exd4), `SchemaIT` 14, `DrillPreparationIT` 9, `BusinessRulesIT` 26 (18 + 8 new scenarios).
+- **The tests can fail** (separate worktree from 216544f):
+  - `answer` back to "only the engine's first choice" fails 3 `DrillTest` tests and 2 Cucumber scenarios (Nc3 correct; 6 days after two correct answers);
+  - ignoring the budget reason fails 2 `AnalysisClientTest` tests and both budget tests in `DrillPreparationIT`.
+- **CI on PR #81 (216544f), all green on the first attempt:**
+  - Backend 1m59s (96 + 106 tests, the same counts as locally);
+  - Analysis service 3m52s; Frontend 31 s; Docker Compose stack 1m11s; End-to-end 7m38s;
+  - the CodeQL checks.
+- **Two of my own mistakes, caught before committing:**
+  - a Maven image digest typed from memory (it did not exist; the real one comes from the backend's Dockerfile);
+  - a wrong count of legal moves in the end-to-end test (29 instead of 27, now counted with python-chess).
+
+**Open points / risks:**
+- **Load:** with the defaults, a backlog of findings costs up to 5 `/judge` calls per minute, each up to the 60 s budget, on the same analysis service as the analysis job. The demo's 5 findings take about 25 s in total. Watch it with real imports.
+- **The stored `drop` vs the classification:** the sanity rule compares the recomputed verdict with 0.1, not with the finding's classification (≥ 0.2), so a borderline mistake can still become a drill as long as it loses at least 0.1.
+- **Next:** the journey's backend (lessons, mastery, the API; ADR 0008), after Gergo decides ADR 0008's open question (a).
+
+**Links:** [#36](https://github.com/Gergo019/blindspot-chess/issues/36), [PR #81](https://github.com/Gergo019/blindspot-chess/pull/81), [#78](https://github.com/Gergo019/blindspot-chess/issues/78), [ADR 0008](decisions/0008-learning-journey.md), [#74](https://github.com/Gergo019/blindspot-chess/issues/74)
+
 ## 2026-11-21: Per-move verdicts in the analysis service, POST /judge (#78 / PR #80)
 
 **Goal:** Judge every legal move of a drill position, so the backend can check a learner's answer by lookup and show board evidence for every wrong answer (ADR 0008, part a of #36). The time budget is part of the work: measure the real time per drill, choose a configurable default from it, and enforce it, without shortening a search.
