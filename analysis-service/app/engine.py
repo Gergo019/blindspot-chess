@@ -87,6 +87,21 @@ class Engine:
             raise RuntimeError(f"Stockfish returned no best move for {board.fen()}")
         return PositionEval(score, pv[0], pv[:PV_PLIES])
 
+    def search_move(self, board: chess.Board, move: chess.Move) -> PositionEval:
+        """Searches ``board`` with ``move`` as the only root move, at the pinned depth (POST /judge).
+
+        The score is the position's value if ``move`` is played (White's point of view), and the
+        PV starts with ``move``. Like every search here, it starts from a cleared state
+        (``ucinewgame``), so a move's verdict does not depend on which moves were searched before.
+        """
+        info = self._engine.analyse(board, self._limit, game=object(), root_moves=[move])
+        pov = info["score"].white()
+        score = Score(mate=pov.mate()) if pov.is_mate() else Score(cp=pov.score())
+        pv = tuple(info.get("pv", ())) or (move,)
+        if pv[0] != move:
+            raise RuntimeError(f"Stockfish searched {pv[0].uci()} instead of {move.uci()} in {board.fen()}")
+        return PositionEval(score, move, pv[:PV_PLIES])
+
 
 @contextmanager
 def open_engine(settings: Settings) -> Iterator[Engine]:

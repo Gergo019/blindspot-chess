@@ -97,3 +97,39 @@ class AnalyzeResponse(_CamelModel):
     engine: EngineInfo
     moves: list[MoveEvaluation]
     findings: list[Finding]
+
+
+# Longest FEN accepted by POST /judge; the backend stores FENs in VARCHAR(100).
+MAX_FEN_CHARS = 100
+
+
+class JudgeRequest(_CamelModel):
+    """A drill position (#78). The side to move is the side whose moves are judged."""
+
+    fen: str = Field(min_length=1, max_length=MAX_FEN_CHARS)
+
+
+class Verdict(_CamelModel):
+    """The engine's judgement of one legal move, in the shape the backend stores (#36).
+
+    ``score`` is the position's value after the move, from White's point of view. ``drop`` is
+    the loss in winning chances against the best judged move, from the mover's side, on the
+    classification's scale (rounded to 4 decimals, so 0 for the best move); ``accepted`` is
+    ``drop < 0.1``. ``refutation_uci`` is the engine's line after the move (space-separated UCI,
+    empty when the move ends the game), the board evidence for a wrong answer.
+    """
+
+    uci: str
+    san: str
+    score: Score
+    drop: float = Field(ge=0)
+    accepted: bool
+    refutation_uci: str
+
+
+class JudgeResponse(_CamelModel):
+    engine: EngineInfo
+    fen: str  # the position as parsed, normalised by python-chess
+    side_to_move: Color
+    accept_below: float  # the drop threshold: accepted means drop < accept_below
+    verdicts: list[Verdict]  # one per legal move: best first (lowest drop), ties by UCI

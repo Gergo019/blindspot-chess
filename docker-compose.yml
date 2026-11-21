@@ -62,6 +62,7 @@ services:
       ENGINE_DEPTH: ${ENGINE_DEPTH:-16}
       ENGINE_THREADS: ${ENGINE_THREADS:-1}
       ENGINE_HASH_MB: ${ENGINE_HASH_MB:-64}
+      JUDGE_BUDGET_SECONDS: ${JUDGE_BUDGET_SECONDS:-60}
       LLM_API_KEY: ${LLM_API_KEY:-}
     # No published port (#60): only the backend calls it, over the Compose network. To call it
     # yourself: docker compose exec analysis-service python -c "..." (see README).

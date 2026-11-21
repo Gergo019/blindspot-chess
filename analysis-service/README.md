@@ -6,6 +6,7 @@ Python (FastAPI) service for everything that needs chess knowledge: engine analy
 |---|---|---|
 | 1 | `GET /health` | Service status, plus the engine name, version, depth, threads and hash size (`"engine": "MISSING"` if Stockfish cannot start) |
 | 1 | `POST /analyze` | Takes one finished game as PGN, returns an evaluation and classification for every half-move, and findings (motifs) for the user's moves |
+| 3 | `POST /judge` | Takes one drill position as FEN, returns a verdict for every legal move: its score, the drop in winning chances, whether it is accepted, and its refutation line ([ADR 0008](../docs/decisions/0008-learning-journey.md)) |
 | 4 | `POST /explain` | Explains a mistake from validated claims ([ADR 0003](../docs/decisions/0003-facts-first-explanations.md)) |
 
 Why Python here and not Java: python-chess is the most complete chess library for move generation, PGN parsing and UCI engine control. See [ADR 0002](../docs/decisions/0002-python-analysis-service.md).
@@ -54,6 +55,46 @@ Response (shortened):
 - **Fivefold repetition ends the analysis.** Lichess games can continue after a fivefold repetition (79 of 39,080 finished rapid games in January 2013), so such a game is accepted and analysed up to the fivefold position; later moves get no evaluation.
 - **503** if Stockfish cannot be started.
 
+## POST /judge
+
+Judges every legal move of one drill position (#78, [ADR 0008](../docs/decisions/0008-learning-journey.md)), so the backend can check a learner's answer by lookup and show evidence for every wrong one. Synchronous: one position per call, from the backend's drill-preparation job, never while a learner waits.
+
+Request (the side to move is the side whose moves are judged):
+
+```json
+{ "fen": "r1b1kbnr/pppp1ppp/2n5/8/3NP2q/8/PPP2PPP/RNBQKB1R w KQkq - 1 5" }
+```
+
+Response (shortened to 3 of the 39 verdicts; the position before the golden demo finding of game `008j6z3b`, where White played Qe2 and lost the knight on d4; `tests/golden/judge/008j6z3b-ply9-before.json`):
+
+```json
+{
+  "engine": { "name": "Stockfish", "version": "19", "depth": 16, "threads": 1, "hashMb": 64 },
+  "fen": "r1b1kbnr/pppp1ppp/2n5/8/3NP2q/8/PPP2PPP/RNBQKB1R w KQkq - 1 5",
+  "sideToMove": "WHITE",
+  "acceptBelow": 0.1,
+  "verdicts": [
+    { "uci": "b1c3", "san": "Nc3", "score": { "cp": 70 }, "drop": 0.0, "accepted": true,
+      "refutationUci": "f8b4 f1e2 h4e4 d4b5 b4c3 b2c3 e8d8" },
+    { "uci": "d4b5", "san": "Nb5", "score": { "cp": 61 }, "drop": 0.0163, "accepted": true,
+      "refutationUci": "f8c5 d1e2 c6d4 g2g3 h4f6 b5d4 c5d4" },
+    { "uci": "d1e2", "san": "Qe2", "score": { "cp": -577 }, "drop": 0.9147, "accepted": false,
+      "refutationUci": "c6d4 e2d3 d4c6 b1c3 f8c5 g2g3 h4d8" }
+  ]
+}
+```
+
+Three moves are accepted here (Nc3, Nb5, Be3); the game's Qe2 is rejected, and its refutation starts with Nxd4, as in the finding's evidence line. A move's `score` comes from a search of the position before it, so it can differ a little from `/analyze`'s `scoreAfter` for the same move (here -577 against -613), which searches the position after it.
+
+- **One verdict per legal move**, best first (lowest `drop`), ties by UCI.
+- **Each move is searched on its own** (UCI `searchmoves`), at the pinned depth, from a cleared state like every search here, so a verdict does not depend on the other moves. Not one MultiPV search, whose result depends on the number of lines.
+- `score` is the value after the move, from White's point of view, with exactly one of `cp` / `mate`.
+- `drop` is the loss in the mover's winning chances against the best judged move, on the classification's scale (rounded to 4 decimals, so the best move has 0). `accepted` means `drop < 0.1` (`acceptBelow`, the inaccuracy threshold).
+- `refutationUci` is the engine's line after the move (space-separated UCI, empty if the move ends the game): the board evidence for a wrong answer.
+- **Time budget** (`JUDGE_BUDGET_SECONDS`): the searches are never shortened, so results stay reproducible. The elapsed time is checked after every search; once it exceeds the budget, the request fails with **503** and `detail.reason` = `JUDGE_BUDGET_EXCEEDED` (with the budget, the elapsed time and how many moves were judged), and **no verdicts**. It can overrun the budget by at most one search. The default comes from measuring the demo positions (devlog, #78): `python -m tests.measure_judge` (instructions in the script).
+- **Rejected with 422:** not a FEN, not a legal position (for example a missing king, bad castling rights, the side not to move in check), a finished position (checkmate, stalemate, insufficient material, the 75-move rule), an empty FEN or one longer than 100 characters.
+- **503** with a plain `detail` string if Stockfish cannot be started.
+
 ## Reproducibility
 
 Every evaluation must be reproducible (product rule 4), so:
@@ -70,6 +111,7 @@ Every evaluation must be reproducible (product rule 4), so:
 | `ENGINE_DEPTH` | `16` | Fixed search depth per position |
 | `ENGINE_THREADS` | `1` | Search threads; keep 1 for reproducible results |
 | `ENGINE_HASH_MB` | `64` | Hash table size in MB |
+| `JUDGE_BUDGET_SECONDS` | `60` | Wall-clock budget for one `POST /judge` request; over it, a 503 with no verdicts |
 | `STOCKFISH_PATH` | `/usr/local/bin/stockfish` in the image, otherwise `stockfish` on the `PATH` | Engine binary |
 
 ## Run and test with Docker (recommended)
@@ -98,7 +140,7 @@ The engine tests and `POST /analyze` need a Stockfish binary: download the Stock
 
 ## Golden files
 
-`tests/golden/` holds the full `/analyze` output for two demo games; `tests/test_golden.py` compares the live output with them exactly (ADR 0002). If the output changes on purpose (new Stockfish, other engine settings, a new detector version), regenerate them with `tests/golden/regenerate.py` (instructions in the script) and explain the change in a devlog entry. Without `--write` the script only reports which files would change.
+`tests/golden/` holds the full `/analyze` output for two demo games; `tests/test_golden.py` compares the live output with them exactly (ADR 0002). `tests/golden/judge/` does the same for `/judge` on four positions: the two golden findings, each before the user's mistake and after it (`tests/test_judge_golden.py`). If the output changes on purpose (new Stockfish, other engine settings, a new detector version), regenerate them with `tests/golden/regenerate.py` (instructions in the script) and explain the change in a devlog entry. Without `--write` the script only reports which files would change.
 
 ## Licence
 
