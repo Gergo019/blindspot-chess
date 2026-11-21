@@ -16,7 +16,8 @@ These shape design and tests more than any Git convention. Rules about what a pl
 - **Never commit or push directly to `main`.** Every change goes through a branch and a pull request, however small.
 - `main` must always build and pass CI. Protect it in GitHub (Settings > Branches): require a PR and green checks, block force pushes.
 - **One short-lived branch per change**, from an up-to-date `main`: `<type>/<short-description>`, optionally with an issue number (`feat/12-lichess-import`). Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`.
-- **Pull requests start as drafts.** A PR is opened as a draft and marked "Ready for review" only together with the final report on it (CI green, nothing pending). Never merge a draft, and never merge while follow-up commits are still being pushed.
+- **Pull requests start as drafts.** A PR is opened as a draft and marked "Ready for review" only together with the final report on it (CI green on the last commit, nothing pending). The devlog entry goes into the last commit before the PR is marked ready, so nothing lands after the report.
+- **Merge only after the final report.** Never merge a draft, and never merge while follow-up commits are still being pushed: a PR is merged once its final report is in and every required check passed on its last commit.
 - **Focused PRs, squash-merged** once CI is green. The PR title becomes the commit on `main`. Delete the branch after merging.
 - **Issues for work worth tracking.** A project board and milestones are optional for solo work.
 - **Decision records** in `docs/decisions/` for choices you will want to explain later (context, decision, consequences, half a page).
@@ -49,7 +50,7 @@ These shape design and tests more than any Git convention. Rules about what a pl
 
 - The README describes how to run the project *today*; a change that alters setup updates it in the same PR.
 - Notable changes go into `CHANGELOG.md` under `Unreleased`.
-- Every PR adds or updates an entry in `docs/devlog.md`.
+- Every PR adds or updates an entry in `docs/devlog.md`. **Exception: Dependabot PRs**, which cannot write one; their PR and its CI run are the record. If a Dependabot update needs a decision or a follow-up change, that follow-up PR gets the entry.
 - Each finished phase is tagged with [Semantic Versioning](https://semver.org/) (`v0.1.0`, `v0.2.0`, ...) and gets a GitHub Release.
 
 ## Quick reference

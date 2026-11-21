@@ -13,7 +13,8 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: pip
-    directory: /analysis-service
+    # The analysis service (pip-compile lock with hashes) and the demo-data tool (plain pins).
+    directories: [/analysis-service, /tools/demo-data]
     schedule:
       interval: weekly
     groups:
@@ -72,3 +73,18 @@ updates:
       # Python: stay on the version the tests run on (python:3.13-slim).
       - dependency-name: python
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  # docker-compose.yml: the database image (#72). The `docker` ecosystem only reads Dockerfiles, so
+  # Compose files need this one. The image is pinned by digest; Dependabot proposes new digests.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      all:
+        patterns: ["*"]
+    ignore:
+      # pgvector/pgvector:pg17 reads as version 17: stay on PostgreSQL 17. A major upgrade needs a
+      # data migration (dump and restore, or pg_upgrade) and is done by hand.
+      - dependency-name: pgvector/pgvector
+        update-types: ["version-update:semver-major"]
