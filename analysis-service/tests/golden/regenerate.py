@@ -16,6 +16,10 @@ Inside the test image, from analysis-service/:
 Without --write it only reports which files would change. Each file keeps its
 own request; --from-demo PATH ID... creates files for demo games (Lichess
 export NDJSON, as in backend/src/main/resources/demo/games.ndjson).
+
+The same applies to the POST /judge golden files in tests/golden/judge/
+(#78): every file there is regenerated from its own request, and
+--judge NAME FEN creates one more.
 """
 
 import argparse
@@ -28,6 +32,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 GOLDEN = Path(__file__).parent
+JUDGE = GOLDEN / "judge"
 
 
 def demo_request(path: Path, game_id: str) -> dict:
@@ -43,28 +48,35 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--write", action="store_true", help="write the files (default: only report)")
     parser.add_argument("--from-demo", nargs="+", metavar=("NDJSON", "ID"), help="create files for demo games")
+    parser.add_argument("--judge", nargs=2, action="append", metavar=("NAME", "FEN"), help="create a /judge file")
     args = parser.parse_args()
 
-    requests = {f.stem: json.loads(f.read_text())["request"] for f in sorted(GOLDEN.glob("*.json"))}
+    # (endpoint, folder, name) -> request
+    requests = {("/analyze", GOLDEN, f.stem): json.loads(f.read_text())["request"] for f in sorted(GOLDEN.glob("*.json"))}
     if args.from_demo:
         path, *ids = args.from_demo
         for game_id in ids:
-            requests[game_id] = demo_request(Path(path), game_id)
+            requests[("/analyze", GOLDEN, game_id)] = demo_request(Path(path), game_id)
+    for f in sorted(JUDGE.glob("*.json")):
+        requests[("/judge", JUDGE, f.stem)] = json.loads(f.read_text())["request"]
+    for name, fen in args.judge or []:
+        requests[("/judge", JUDGE, name)] = {"fen": fen}
 
     client = TestClient(app)
     changed = 0
-    for name, request in requests.items():
-        response = client.post("/analyze", json=request)
+    for (endpoint, folder, name), request in requests.items():
+        response = client.post(endpoint, json=request)
         if response.status_code != 200:
-            raise SystemExit(f"{name}: /analyze answered {response.status_code}: {response.text}")
+            raise SystemExit(f"{name}: {endpoint} answered {response.status_code}: {response.text}")
         content = json.dumps({"request": request, "response": response.json()}, indent=1, sort_keys=True) + "\n"
-        target = GOLDEN / f"{name}.json"
+        target = folder / f"{name}.json"
         if target.exists() and target.read_text() == content:
             print(f"{name}: unchanged")
             continue
         changed += 1
         print(f"{name}: {'written' if args.write else 'would change'}")
         if args.write:
+            target.parent.mkdir(exist_ok=True)
             target.write_text(content)
     return 0 if args.write or changed == 0 else 1
 

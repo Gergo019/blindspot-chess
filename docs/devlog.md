@@ -4,6 +4,73 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-21: Per-move verdicts in the analysis service, POST /judge (#78 / PR #80)
+
+**Goal:** Judge every legal move of a drill position, so the backend can check a learner's answer by lookup and show board evidence for every wrong answer (ADR 0008, part a of #36). The time budget is part of the work: measure the real time per drill, choose a configurable default from it, and enforce it, without shortening a search.
+
+**Changes:**
+- `app/judge.py` (new):
+  - FEN validation (`parse_position`): not a FEN, not a legal position, or a finished position is a 422, so an invalid position never reaches Stockfish.
+  - The pure verdict rules (`verdicts`, `is_accepted`).
+  - The loop with the budget (`judge`).
+- `app/engine.py`: `Engine.search_move` searches one root move (`root_moves`, UCI `searchmoves`) at the pinned depth from a cleared state.
+- `app/models.py`: `JudgeRequest` (`fen`, at most 100 characters), `Verdict`, `JudgeResponse`.
+- `app/main.py`: `POST /judge`. Over budget it is a 503 with `detail.reason = "JUDGE_BUDGET_EXCEEDED"`; a missing engine stays a 503 with a string `detail`.
+- `app/config.py`: `JUDGE_BUDGET_SECONDS` (positive number, default 60), also in `.env.example` and `docker-compose.yml`.
+- Tests:
+  - `test_judge.py` (no engine);
+  - `test_judge_engine.py`;
+  - `test_judge_golden.py` with `tests/golden/judge/` (4 positions);
+  - `test_judge_fuzz.py`.
+  - `regenerate.py` gains `--judge NAME FEN` and regenerates the judge files with the others.
+- `tests/measure_judge.py`: the measurement below, to run on purpose. It is not a test.
+- `analysis-service/README.md` (the endpoint, the budget, the setting, the golden files) and `CHANGELOG.md`.
+
+**Measurement** (`python -m tests.measure_judge`):
+- **Setup:** the 20 demo games analysed; both drill positions (before and after the mistake) of each of the 5 hanging-piece findings judged with the budget off. Apple M4, Docker Desktop (aarch64, 10 CPUs), depth 16, 1 thread, 64 MB.
+
+| Game, ply | Find a safe move | See the capture |
+|---|---|---|
+| 008j6z3b, 9 | 39 moves, 3 accepted, 5.96 s | 43 moves, 1 accepted, 10.92 s |
+| 008pkspi, 36 | 35 moves, 1 accepted, 7.35 s | 38 moves, 1 accepted, 11.15 s |
+| 00ckuzm1, 66 | 31 moves, 1 accepted, 2.41 s | 8 moves, 1 accepted, 1.84 s |
+| 00jay4x6, 22 | 31 moves, 1 accepted, 3.40 s | 43 moves, 1 accepted, 6.47 s |
+| 00lv6mdm, 16 | 45 moves, 9 accepted, 5.89 s | 31 moves, 1 accepted, 7.56 s |
+
+- **Summary:** 1.84 to 11.15 s per drill, median 6.22 s. Per search: median 0.182 s, max 0.293 s.
+- **Checks:** every mistake rejected (drop 0.51 to 1.49) and every opponent capture accepted.
+- On CI (amd64) the analysis service's tests took 3:15, against 1:50 locally.
+
+**Decisions:**
+- **Default budget 60 s:** over 5× the slowest measured drill. At the worst per-search time seen (0.29 s), it covers about 200 legal moves, close to the maximum of 218, or about 100 on a machine twice as slow.
+  - A tighter budget was rejected: the demo positions have at most 45 legal moves, and a budget that is too tight means a drill is never created.
+  - The setting exists so that a slower machine can raise it.
+- **The budget is checked between searches, never inside one:** depth stays fixed, so a verdict is reproducible.
+  - Rejected: a time limit per search (`Limit(time=...)`), which would make results depend on machine speed.
+  - Rejected: cancelling a running search and discarding it (more code, for an overrun of at most one search, about 0.3 s).
+- **Over budget is a 503 with a structured `detail`,** not a new status code. It is a server-side condition, and `reason` tells it apart from an engine outage (a string `detail`), so #36 can decide to skip the drill rather than retry forever.
+- **The drop is measured against the best judged move,** not against a separate search of the whole position. The best move then always has drop 0, and no extra search is needed.
+  - Consequence: a move's `score` comes from a search of the position *before* it, so it differs a little from `/analyze`'s `scoreAfter` for the same move (Qe2 in 008j6z3b: -577 against -613).
+  - The backend's sanity rule (#36) compares the drop with the threshold, not scores across endpoints.
+- **Field names follow the backend's columns (#36),** not the issue's wording: `refutationUci` (the line *after* the move, space-separated like `evidenceLineUci`) instead of `pv`. `drop` is rounded to 4 decimals for `NUMERIC(5,4)`, which also keeps the golden files stable across platforms.
+- **One search per legal move, in UCI order:** the order of searches is the same on every run.
+- **Golden positions are derived, not typed.** I typed one FEN by hand at first and it had a stray bishop (`008pkspi-ply36-after`). It was regenerated from the move itself, and `test_every_golden_position_is_a_drill_position_of_a_golden_finding` now fails if a golden position is not one of the golden findings' drill positions.
+- **Engine tests read the golden files** instead of judging the same positions again: the golden test already proves the live output equals them. The suite went from 2:40 to 1:50 locally.
+
+**Verification:**
+- Local, in the test image: **189 passed** (no-engine, engine, golden, fuzz).
+- **The tests can fail** (in a separate worktree from the commit): `drop <= 0.1` fails the threshold test, and a disabled budget check fails both budget tests.
+- **CI on PR #80 (6e152e0)**, all jobs green after one re-run: Backend 1m55s, Analysis service 3m56s (189 passed in 3:15), Frontend 23 s, End-to-end 6m04s, and the CodeQL checks.
+  - **The Docker Compose stack job failed first** on the known Maven Central error: `spring-boot-starter-parent` could not be resolved in the backend's image build, and the single retry from #71 also failed 30 s later.
+  - It is unrelated to this PR (the backend is unchanged) and passed on the re-run of the failed job.
+
+**Open points / risks:**
+- **#71's one retry was not enough this time:** Central failed twice, 30 s apart. If it happens again, consider a second retry with a longer wait, or a Maven repository mirror for the image build.
+- **Budget failures on slower machines:** the measurement is from one fast machine. CI's engine tests are about 1.8× slower, which still leaves room within 60 s. The backend should log budget failures so a too-tight budget shows up.
+- **Strict acceptance:** with drop < 0.1, most demo "Find a safe move" positions accept only one move (4 of 5; one accepts 9). Safe but slightly weaker moves count as wrong. That is the threshold #36 and ADR 0008 chose; watch it when lessons are played.
+
+**Links:** [#78](https://github.com/Gergo019/blindspot-chess/issues/78), [PR #80](https://github.com/Gergo019/blindspot-chess/pull/80), [#36](https://github.com/Gergo019/blindspot-chess/issues/36), [ADR 0008](decisions/0008-learning-journey.md), [#71](https://github.com/Gergo019/blindspot-chess/pull/71)
+
 ## 2026-11-21: ADR 0008, the learning journey (#77 / PR #79)
 
 **Goal:** Record the design of the learning journey's first slice (one unit, Hanging Pieces) before any code, as ADR 0007 did for the UI. The design and Gergo's answers to its seven questions are in #74.

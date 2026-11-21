@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Analysis service: `POST /judge` (#78), a verdict for every legal move of a drill position, for answer checking by lookup (ADR 0008):
+  - **Per move:** score, drop in winning chances against the best judged move, accepted (drop < 0.1), and the refutation line as board evidence.
+  - **Search:** each move is searched on its own (`searchmoves`) at the pinned depth from a cleared state.
+  - **Time budget** (`JUDGE_BUDGET_SECONDS`, default 60 s): searches are never shortened, and a request over budget is a 503 (`JUDGE_BUDGET_EXCEEDED`) with no verdicts. The default comes from measuring the 10 demo drill positions: 1.8 to 11.2 s, median 6.2 s on an Apple M4.
+  - **Rejected with 422:** invalid or finished positions.
+  - **Tests:** golden files for four positions, fuzzing, and `tests/measure_judge.py`.
 - ADR 0008, the learning journey, slice 1 (Hanging Pieces) (#77):
   - the curriculum is defined in code; lesson membership and mastery are stored, per-puzzle progress is derived from drill attempts;
   - lessons fill up from findings, and the map says how many positions are missing;
