@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- ADR 0008, the learning journey, slice 1 (Hanging Pieces) (#77):
+  - the curriculum is defined in code; lesson membership and mastery are stored, per-puzzle progress is derived from drill attempts;
+  - lessons fill up from findings, and the map says how many positions are missing;
+  - "Find a safe move" comes first, "See the capture" second;
+  - answers are checked in the backend against stored verdicts for every legal move;
+  - mastery takes 2 check puzzles, both right first try, and a failed check can be retried right away;
+  - all lessons are open, with a recommended order (soft locking).
+
+### Changed
+
+- ADR 0007 amended (#77):
+  - the "Drills" navigation item becomes "Journey";
+  - a `PuzzleBoard` (drag, click-click, a typed move, a promotion choice) joins the read-only `EvidenceBoard`;
+  - "no gamification" is spelled out for the map: progress as evidence, no points, streaks, badges or locks.
+
 ## [0.2.0] - 2026-11-21
 
 The web app: a read-only findings screen on a read-only API, tested end to end in a real browser, with the product rules written as executable features and the local stack hardened.
