@@ -4,6 +4,46 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-21: ADR 0008, the learning journey (#77 / PR #79)
+
+**Goal:** Record the design of the learning journey's first slice (one unit, Hanging Pieces) before any code, as ADR 0007 did for the UI. The design and Gergo's answers to its seven questions are in #74.
+
+**Changes:**
+- `docs/decisions/0008-learning-journey.md` (new):
+  - **Progress:** the curriculum is defined in code; lesson membership and mastery are stored; per-puzzle progress is derived from `drill_attempts`.
+  - **Lessons fill up from findings:** at least 3 practice and 2 check items each, and the map says how many positions are missing.
+  - **Tasks:** "Find a safe move", then "See the capture".
+  - **Answer checking:** in the backend, by lookup in stored verdicts for every legal move (#78, #36).
+  - **Mastery:** 2 check puzzles, both right first try, with an immediate retry; a check item is answered once, enforced by a partial unique index.
+  - **Soft locking.**
+  - **API:** four endpoints; the POSTs are JSON only until sign-in (#60).
+  - **Rejected options**, and an honest statement that slice 1 measures practice, not transfer.
+- `docs/decisions/0007-frontend-board-and-visual-identity.md`: an amendment of 2026-11-21.
+  - "Drills" becomes "Journey".
+  - The map, lesson and result screens.
+  - The `PuzzleBoard` (drag, click-click, a typed SAN/UCI move, a promotion choice; correctness decided by the server; axe and the CSP guard on the new screens).
+  - What "no gamification" allows and forbids on the map.
+  - Pointers to the amendment from the header, Identity and Layout sections.
+- `README.md`: the Phase 3 roadmap line names the journey and the slice 1 order (#77 → #78 → #36 → the journey's backend, board and screens).
+- `CHANGELOG.md`: both ADR changes under Unreleased.
+
+**Decisions:**
+- **The ADR follows Gergo's answers on #74, with no changes.**
+- **Strict locking is listed as rejected**, with the proposal's reason: a game mechanic more than a learning aid, which ADR 0007 keeps out.
+- **The numbering skips 0006.** ADR 0006 stays reserved for the knight-fork detector (#26), as the devlog of #30 says.
+- **One open question is recorded as open, not decided** (#77 allows either): what a mastery retry uses when no unused positions are left. With the demo data this happens on the very first retry, because lesson 1 uses all 5 positions. The options are in ADR 0008, open question (a).
+- **The findings screen keeps no "Find a better move" button**, as in the code today; a link from a finding to its lesson is left to the frontend issue.
+
+**Verification:**
+- All 34 relative links in the four changed files resolve, including the anchors (`README.md#the-coaching-loop`, `CONTRIBUTING.md#database`, the new ADR 0007 amendment anchor, and the ADR 0002 amendment). Checked with a script that resolves each path from the file's folder and compares anchors with GitHub's heading slugs.
+- CI on PR #79 (6425626) was green: Backend 2m10s, Analysis service 1m56s, Frontend 32 s, Docker Compose stack 1m15s, End-to-end (Playwright) 7m16s. The CodeQL checks also passed: they now run on PRs, since CodeQL's default setup was turned on (2026-11-21, 10:24).
+
+**Open points / risks:**
+- ADR 0008, open question (a): decide before the backend journey.
+- The PR was marked ready before this entry landed. It should be merged only after the final report.
+
+**Links:** [#77](https://github.com/Gergo019/blindspot-chess/issues/77), [PR #79](https://github.com/Gergo019/blindspot-chess/pull/79), [#74](https://github.com/Gergo019/blindspot-chess/issues/74), [#78](https://github.com/Gergo019/blindspot-chess/issues/78), [#36](https://github.com/Gergo019/blindspot-chess/issues/36)
+
 ## 2026-11-21: Repository hygiene from the health check (#72 / PR #73)
 
 **Goal:** Close the small gaps the project health check of 2026-11-21 found: an image pinned by tag only, two manifests outside Dependabot, two shipped packages missing from the notices, CONTRIBUTING rules that did not match practice, and done items still open in issues.
