@@ -1,7 +1,7 @@
 # 0007: Frontend: board component, licences and visual identity
 
 - Status: accepted
-- Date: 2026-11-16 (#49), updated 2026-11-20 (highlight style and contrast results, #50)
+- Date: 2026-11-16 (#49), updated 2026-11-20 (highlight style and contrast results, #50), amended 2026-11-21 (the Journey and an interactive board, #77; see the [amendment](#amendment-2026-11-21-the-journey-and-an-interactive-board))
 
 ## Context
 
@@ -24,11 +24,11 @@ The layout below comes from a design mockup agreed on 2026-11-16. The mockup is 
 
 - What we take from Lichess: the board is the hero, the interface is calm, everything is reachable by keyboard.
 - What we do not take: no Lichess name or logo, no Lichess colours (its brown board), no Lichess piece set or sounds. Lichess appears only as the data source ("your Lichess games", the open database), as it does today.
-- **No gamification:** no badges, confetti, streak banners or points. Progress is shown as evidence (games, positions, results), not as rewards.
+- **No gamification:** no badges, confetti, streak banners or points. Progress is shown as evidence (games, positions, results), not as rewards. What this means for the Journey's map: see the [amendment of 2026-11-21](#amendment-2026-11-21-the-journey-and-an-interactive-board).
 
 ### Layout
 
-- **Header:** the BlindSpot name with a simple mark, and navigation: Findings, Games, Drills. Drills is shown disabled until drills exist.
+- **Header:** the BlindSpot name with a simple mark, and navigation: Findings, Games, Drills. Drills is shown disabled until drills exist. (Amended 2026-11-21: "Drills" becomes "Journey", see the [amendment](#amendment-2026-11-21-the-journey-and-an-interactive-board).)
 - **Board left, side panel right.** The board takes about two thirds of the width, at most about 760 px. On narrow screens the panel stacks below the board, which is then full width.
 - **Board:** muted blue-grey squares (not brown), coordinates drawn inside the edge squares. Under the board, a small legend ("Your move", "Evidence line") and the keyboard hint.
 - **Side panel, top to bottom:**
@@ -73,3 +73,55 @@ Text, muted text and disabled text pass 4.5:1 on every background in both themes
 - The UI is recognisably its own, and two colours carry the meaning on every screen: orange is always the user's mistake, blue is always evidence.
 - Product rule 2 is enforced in the frontend by a test, not by convention.
 - **Order of work:** the UI comes before Phase 2's detectors, so the existing findings can be seen and checked on a board: ADR 0007 (#49), then the scaffold and theme (#50), the read-only API (#51), the findings screen (#24), Playwright tests (#52), then one or two Cucumber scenarios, and after that the knight-fork detector (#26).
+
+## Amendment 2026-11-21: the Journey and an interactive board
+
+**Context:** the learning journey ([ADR 0008](0008-learning-journey.md), #74, #77) brings the first screens where the user moves pieces. The decisions above assume a read-only board, a "Drills" item that stays disabled, and a ban on gamification that a map of lessons could easily break.
+
+**What changed:**
+
+| Before | After |
+|---|---|
+| Navigation: Findings, Games, Drills (disabled) | Findings, Games, **Journey** (`/journey`). The SM-2 review queue can live under it later. |
+| One board, `EvidenceBoard`: one labelled image with an `inert` inside | `EvidenceBoard` unchanged, plus a new **`PuzzleBoard`** for lessons |
+| "No gamification" stated in general | stated for the map: progress as evidence, all lessons open (below) |
+| Two meaning colours, orange and blue | unchanged; "Correct" and "Not this one" are text with an icon, not a third saturated colour |
+
+### Screens
+
+All three keep the layout above: the board on the left (about two thirds, at most about 760 px), the side panel on the right, stacked on narrow screens.
+
+- **Map (`/journey`):**
+  - The board previews the position of the recommended next puzzle, without arrows.
+  - The side panel has the unit card, which reuses the "Your blind spot" card ("Hanging pieces: in 5 of your last 20 rapid games"), and a vertical path of lesson nodes.
+  - Each node shows its number, title and state with its evidence: "4 of 5 positions solved first try", "Mastered", or "2 more positions needed".
+  - The nodes are a list of buttons; the recommended next one has `aria-current="step"`.
+- **Lesson (`/journey/lessons/:key`):**
+  - The side panel has the short explanation (collapsible after the first puzzle), "Position 3 of 7", and the prompt ("White to move: find a move that keeps your pieces safe").
+  - Check items are marked "Mastery check: one try".
+  - After an answer, the panel says "Correct" or "Not this one", the move's verdict, the engine's move, and "In your game you played …". The board then shows the game's move as the orange arrow and the evidence line in blue, stepped with the arrow keys and chips, exactly as on the findings screen.
+  - "Next" moves on.
+- **Result (part of the lesson screen, once every item is answered):**
+  - Per position: solved first try or not, with a link to the finding it came from (`/findings/:id`).
+  - Whether the lesson is mastered, the recommended next lesson, or "Retry the mastery check".
+  - In slice 1 it also says that the positions are the user's own, so this is practice, not a transfer test (ADR 0008).
+
+### `PuzzleBoard`
+
+- The same board look as `EvidenceBoard` (react-chessboard, the same squares, rings and halo).
+- Moves by **dragging**, by **clicking the piece and then the target square**, and by a **text field** that takes a move in SAN or UCI. The text field is the reliable path for the keyboard and for screen readers: react-chessboard's pieces are unnamed buttons (#52), so the board itself is not the keyboard interface.
+- A **promotion choice** (queen, rook, bishop, knight) as a labelled group of buttons.
+- **chess.js checks legality in the browser**, only to refuse illegal moves at once. Whether a move is correct is decided by the server (ADR 0008).
+- The board region has a label naming the side to move and the task, and the result of each move is announced in a `role="status"` region.
+- **The e2e suite's axe check and CSP guard apply to every new screen**, in both themes.
+
+### "No gamification" on the map
+
+- **Allowed:** a path of lessons in a recommended order; states drawn from evidence (positions solved first try, mastered, positions still needed); links back to the games the positions come from.
+- **Not allowed:** points, XP, streaks, badges, hearts or lives, timers, leaderboards, confetti, sounds, and messages that reward rather than inform.
+- **No locks:** every lesson that can be filled is open (soft locking, ADR 0008). "2 more positions needed" describes missing data, not a reward to earn.
+
+### Consequences
+
+- The board stays recognisably one component family, but the lesson screen is the first screen whose board is not an image. Its accessibility rests on the text field and the status region, and axe checks it.
+- The findings screen keeps no "Find a better move" button. Judging a move needs the per-move verdicts, so that happens in a lesson. Whether a finding links to its lesson is left to the frontend issue.

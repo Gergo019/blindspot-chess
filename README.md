@@ -202,7 +202,7 @@ users ──< chess_accounts ──< games ──< move_evaluations ──< mist
 
 - [x] **Phase 1, pipeline** (v0.1.0): background import of recent completed Lichess rapid games (bounded, deduplicated by game id) ✓, `POST /analyze` with pinned Stockfish ✓, background analysis of imported games ✓, seeded demo data from the open database ✓. **Done when** CI sends one known finished game through backend → analysis service → Stockfish and asserts the expected motif comes back with a replayable line.
 - [ ] **Phase 2, findings**: detectors for the two motifs with evidence lines, the pattern report and its evidence threshold
-- [ ] **Phase 3, practice**: board-first React screen ✓ (v0.2.0), Playwright tests ✓ (v0.2.0), own-game and transfer drills
+- [ ] **Phase 3, practice**: board-first React screen ✓ (v0.2.0), Playwright tests ✓ (v0.2.0), own-game and transfer drills inside a learning journey of motif units ([#74](https://github.com/Gergo019/blindspot-chess/issues/74), [ADR 0008](docs/decisions/0008-learning-journey.md)). Slice 1, Hanging Pieces: ADR 0008 ([#77](https://github.com/Gergo019/blindspot-chess/issues/77)) ✓ → per-move verdicts in the analysis service ([#78](https://github.com/Gergo019/blindspot-chess/issues/78)) → drills with accepted moves and verdicts ([#36](https://github.com/Gergo019/blindspot-chess/issues/36)) → the journey's backend, board and screens
 - [ ] **Phase 4, explanations**: typed claims and templates, then the `LLM_FREE` / `LLM_FACTS` experiment and its evaluation report
 - [ ] **Phase 5, operations**: Cucumber acceptance suite (product-rule features ✓ in v0.2.0), Kubernetes manifests, hosted demo
 
