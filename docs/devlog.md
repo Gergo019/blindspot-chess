@@ -1,8 +1,42 @@
 # Engineering log
 
-A chronological record of what was done, why, and what to change if something breaks. Newest entry at the top. Every pull request adds or updates an entry.
+A chronological record of what was done, why, and what to change if something breaks. Newest entry at the top. Every pull request adds or updates an entry (Dependabot PRs excepted, see CONTRIBUTING).
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
+
+## 2026-11-21: Repository hygiene from the health check (#72 / PR #73)
+
+**Goal:** Close the small gaps the project health check of 2026-11-21 found: an image pinned by tag only, two manifests outside Dependabot, two shipped packages missing from the notices, CONTRIBUTING rules that did not match practice, and done items still open in issues.
+
+**Changes:**
+- `docker-compose.yml`: `pgvector/pgvector:pg17@sha256:b513c48566e4777cd3370451400000c78eda6a08131d68f4c31d4a76f27bd8fd` (multi-platform index, amd64 and arm64), with a comment to stay on PostgreSQL 17.
+- `.github/dependabot.yml`:
+  - a new **`docker-compose`** entry for `/` (monthly, grouped), ignoring major updates of `pgvector/pgvector`;
+  - the pip entry now has `directories: [/analysis-service, /tools/demo-data]`.
+- `THIRD_PARTY_NOTICES.md`: `scheduler` 0.28.0 (MIT, Copyright Meta Platforms; via React DOM) and `tslib` 2.9.1 (0BSD, Copyright Microsoft Corporation; via @dnd-kit). Versions and copyright lines are taken from `package-lock.json` and their licence files.
+- `CONTRIBUTING.md`:
+  - the devlog entry goes into the last commit before a PR is marked ready;
+  - a new rule **"Merge only after the final report"** (every required check passed on the last commit);
+  - Dependabot PRs are exempt from the devlog rule (their PR and CI run are the record; a follow-up PR that needs a decision gets the entry).
+  - The devlog header says the same.
+- Issues: ticked **#37's N+1 item**, solved in #51 / PR #63 (fetch joins and a query-count test), and **#60's "revisit the CSP"**: #24 draws arrows in SVG, and the Playwright guard (#52) finds no CSP violations. #60's only open item is now Spring Security with sign-up.
+
+**Decisions:**
+- **`docker-compose`, not `docker`, for `/`:** the request named "docker (/)", but Dependabot's `docker` ecosystem reads Dockerfiles only, and the root has none, so that entry would find nothing. Compose files have their own ecosystem, `docker-compose`, which the published Dependabot schema lists.
+- **The pinned digest is the one everything was tested with:** `b513c485…` was built 2026-11-12, nine days ago, which is newer than the two-week age used for new dependencies. But it is not a new choice: the `pg17` tag has pointed to it since then, and every local run (the fresh-clone checks, the end-to-end runs, the health check) and every CI run used it. Pinning freezes the tested image; an older build is not addressable through the tag.
+- **No PostgreSQL major upgrades from Dependabot:** `pg17` reads as version 17, so Dependabot would offer `pg18`. A major PostgreSQL upgrade needs a data migration, so it stays a manual decision, like the Java and Python lines.
+- **One pip entry with two directories** instead of a second entry, so both get the same schedule and grouping. The demo-data tool pins only `chess==1.11.2`, the same python-chess as the service.
+
+**Verification:**
+- `docker compose config` is valid and resolves the pinned image; `docker pull` of the digest succeeds; the local image has this exact digest.
+- `dependabot.yml` validates against SchemaStore's Dependabot 2.0 schema (`check-jsonschema 0.29.4`: "ok -- validation done"). **GitHub's own "Dependabot config file validation" check did not appear on this PR's commit** (on #62 it ran on a merge commit), so the final confirmation is Dependabot's first run after merge (Insights > Dependency graph > Dependabot).
+- CI on PR #73 (097589d), all five jobs green. The Docker Compose stack and End-to-end jobs pulled `pgvector/pgvector:pg17@sha256:b513c485…`. Times: Backend 1m32s, Analysis service 1m52s, Frontend 29 s, Docker Compose stack 1m10s, End-to-end (Playwright) 6m35s.
+
+**Open points / risks:**
+- Check after merge that Dependabot lists the `docker-compose` and the second pip directory without errors.
+- From the health check, still for Gergo to decide: the required checks (Frontend and End-to-end are not required yet), the repository security settings, and the bounded-context boundaries.
+
+**Links:** [#72](https://github.com/Gergo019/blindspot-chess/issues/72), [PR #73](https://github.com/Gergo019/blindspot-chess/pull/73), [#37](https://github.com/Gergo019/blindspot-chess/issues/37), [#60](https://github.com/Gergo019/blindspot-chess/issues/60)
 
 ## 2026-11-21: CI resilience against Maven Central "absent" errors (#70 / PR #71)
 

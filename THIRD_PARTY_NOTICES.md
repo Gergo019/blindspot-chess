@@ -12,6 +12,8 @@ BlindSpot's own code is under the [MIT licence](LICENSE), except `analysis-servi
 | [Inter](https://rsms.me/inter/) via [@fontsource-variable/inter](https://fontsource.org/fonts/inter) | 5.3.0 | SIL Open Font License 1.1, Copyright (c) 2016 The Inter Project Authors | Self-hosted font files, no requests to font CDNs. |
 | [React](https://react.dev/) and React DOM | 19.3.1 | MIT, Copyright (c) Meta Platforms, Inc. and affiliates | |
 | [@dnd-kit](https://dndkit.com/) (dependency of react-chessboard) | see `frontend/package-lock.json` | MIT, Copyright (c) 2021 Claudéric Demers | |
+| [scheduler](https://github.com/facebook/react/tree/main/packages/scheduler) (dependency of React DOM) | 0.28.0 | MIT, Copyright (c) Meta Platforms, Inc. and affiliates | |
+| [tslib](https://github.com/microsoft/tslib) (dependency of @dnd-kit) | 2.9.1 | 0BSD, Copyright (c) Microsoft Corporation | |
 
 Development tools (Vite, TypeScript, ESLint, Prettier, Vitest, Testing Library, jsdom, and for the end-to-end tests Playwright, Apache-2.0, and axe-core with @axe-core/playwright, MPL-2.0) are used to build and test the app and are not shipped in it. Their versions and licences are recorded in `frontend/package-lock.json`.
 
