@@ -4,4 +4,4 @@
 -r requirements.in
 pytest>=9.2.0,<10.0
 httpx2>=2.16,<3.0
-hypothesis==6.170.15
+hypothesis==6.170.17
