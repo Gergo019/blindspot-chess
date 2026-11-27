@@ -205,6 +205,14 @@ public class Drill extends BaseEntity {
      *         nothing is recorded and the schedule is unchanged
      */
     public DrillAttempt answer(String moveUci, Instant now) {
+        return answer(moveUci, now, null);
+    }
+
+    /**
+     * As {@link #answer(String, Instant)}, for an answer given inside a lesson: the attempt names the lesson
+     * item. Only {@link LessonItem#answer} calls this, after the lesson's own rules.
+     */
+    DrillAttempt answer(String moveUci, Instant now, LessonItem item) {
         MoveVerdict verdict = verdictFor(moveUci);
         if (verdict == null) {
             throw new IllegalMoveException(moveUci, fen);
@@ -232,7 +240,7 @@ public class Drill extends BaseEntity {
         easeFactor = easeFactor.add(delta).max(MIN_EASE).setScale(2, RoundingMode.HALF_UP);
 
         nextReviewAt = now.plus(Duration.ofDays(intervalDays));
-        return new DrillAttempt(this, normalise(moveUci), correct, now);
+        return new DrillAttempt(this, normalise(moveUci), correct, now, item);
     }
 
     /** The stored verdict for a move (UCI, case and surrounding spaces ignored), or null if it is not legal here. */

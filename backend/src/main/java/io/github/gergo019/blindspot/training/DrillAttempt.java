@@ -36,15 +36,29 @@ public class DrillAttempt {
     @Column(name = "attempted_at", nullable = false)
     private Instant attemptedAt;
 
+    /** The lesson item this attempt answered (ADR 0008); null for a review from the SM-2 queue. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lesson_item_id")
+    private LessonItem lessonItem;
+
+    /**
+     * Copied from the item's role, so a partial unique index can allow one attempt per check item; the
+     * database checks that the copy matches the item.
+     */
+    @Column(name = "is_check", nullable = false)
+    private boolean check;
+
     protected DrillAttempt() {
         // for JPA
     }
 
-    DrillAttempt(Drill drill, String moveUci, boolean correct, Instant attemptedAt) {
+    DrillAttempt(Drill drill, String moveUci, boolean correct, Instant attemptedAt, LessonItem lessonItem) {
         this.drill = drill;
         this.moveUci = moveUci;
         this.correct = correct;
         this.attemptedAt = attemptedAt;
+        this.lessonItem = lessonItem;
+        this.check = lessonItem != null && lessonItem.isCheck();
     }
 
     public Long getId() {
@@ -65,5 +79,13 @@ public class DrillAttempt {
 
     public Instant getAttemptedAt() {
         return attemptedAt;
+    }
+
+    public LessonItem getLessonItem() {
+        return lessonItem;
+    }
+
+    public boolean isCheck() {
+        return check;
     }
 }
