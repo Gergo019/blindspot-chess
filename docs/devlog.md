@@ -4,6 +4,48 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-27: Lesson model and curriculum (#88 / PR #91)
+
+**Goal:** The stored lesson model of the learning journey (ADR 0008, "Curriculum, progress and what is stored", and the amendment of 2026-11-27), before it has a service or an API: which drills belong to which lesson for a player, when the player passed the lesson's mastery check, the curriculum in code, and the rules. Slice 1 of the journey backend; the lesson service and Cucumber features (#89) and the endpoints (#90) follow.
+
+**Changes:**
+- **Migration `V6__lessons.sql`** (V1 to V5 unchanged):
+  - `lesson_assignments` (`user_id`, `lesson_key`, `curriculum_version`, `mastered_at`; unique `(user_id, lesson_key)`);
+  - `lesson_items` (`assignment_id`, `drill_id`, both cascading, `position`, `role`; unique `(assignment_id, position)` and `(assignment_id, drill_id)`; a generated `is_check`);
+  - `drill_attempts.lesson_item_id` and `is_check`, with the partial unique index `(lesson_item_id) WHERE is_check`, a composite foreign key `(lesson_item_id, drill_id, is_check)` to the item, and a CHECK that `is_check` needs an item.
+- **Training context:**
+  - `Curriculum`: `journey-1`, unit `HANGING_PIECE`, lessons `hanging-piece/1` to `/5`, target 5 + 2, minimum 3 + 2;
+  - `LessonFilling` (pure): the order and how unassigned lessons share the unused positions;
+  - entities `LessonAssignment` and `LessonItem` with the rules, `CheckAlreadyAnsweredException`;
+  - `LessonAssignmentRepository`.
+- **Reused from #36:** `Drill.answer` gains a package-private variant that names the lesson item. A lesson answer goes through the same verdict lookup and SM-2 as a review. `DrillAttempt` maps the two new columns.
+
+**Decisions:**
+- **`is_check` is checked against the item, not only copied.** A partial index cannot look at `lesson_items`, so the ADR copies the role. A copy can drift: an attempt on a check item marked `is_check = false` would get around the one-attempt index. `lesson_items` has a generated `is_check`, and the composite foreign key makes the attempt's copy, and its drill, match the item.
+  - Rejected: a trigger. It is more code for the same guarantee, and it is invisible in the table definition.
+- **Attempts cascade with their item.** An item is deleted only with its drill (whose attempts are deleted anyway) or its assignment (only with the user).
+  - Rejected: `SET NULL`, which would leave check attempts without an item and break the CHECK.
+- **Unassigned lessons share the unused positions in lesson order.** Each lesson takes up to 7 of what the lessons before it left, and is fillable with at least 5. A later lesson never takes what an earlier unassigned lesson would get. Under soft locking a user can open any lesson, and without this rule, opening lesson 3 first would take lesson 1's positions. With the demo data only lesson 1 fills, as #74 decided.
+  - Rejected: a fixed block per lesson number (positions 1–7, 8–14, …). New findings re-sort the pool, so the blocks would shift under the lessons.
+- **The last 2 positions of a lesson are its check**, after the practice in the heuristic's order. The check comes at the end of the lesson, and on positions further down the order.
+- **Order:** direct losses before discovered losses, then a higher `materialLost`, then the drill id, so the order is stable. A missing `materialLost` (an older detector) counts as 0.
+- **Mastery is per check:** the lesson is mastered when both items of the current check are solved first try. A right answer from a failed check and one from its retry do not add up. Checks are added whole, at consecutive positions. After a re-analysis deletes one check item, the count of check items is odd (or the last two are not neighbours), so the remaining item never combines with an earlier check's item (tested in `LessonModelIT`). One item deleted from each of two checks is not detected; that would need the check's number stored with the item (open point).
+- **A retry is checked before it changes anything:** a refused retry adds no item. "Unused across all lessons" is the caller's to find (`findUsedDrillIds`, `LessonFilling.retryPositions`). The entity refuses any position that is already one of its items.
+- **Texts are a first version:** the titles are "Hanging pieces 1" to "5", with one shared explanation. Hand-written content stays out of scope (#74).
+
+**Verification:**
+- `mvn verify` in `backend/` (pinned Maven image, Testcontainers): 133 unit tests (101 + 32 new) and 117 integration tests (106 + 11 new), all passing.
+  - `LessonAssignmentTest` 20, `LessonFillingTest` 12, `LessonModelIT` 11.
+  - The new IT covers: a check with an item deleted by a re-analysis never combining with an earlier check, a second check attempt refused by the index, a wrong `is_check` or drill refused by the foreign key, a check attempt without an item refused, items deleted with their drill while `mastered_at` stays, and the unique assignment and position.
+- **The database tests can fail:** in a throwaway worktree, without the partial index and without the cascade on `lesson_items.drill_id`, exactly those two tests of `LessonModelIT` fail.
+
+**Open points / risks:**
+- **Not decided by the ADR, chosen here** (in the PR's final report for Gergo): how unassigned lessons share positions, which positions are the check, and whether a drill may be in two lessons. Today only the domain rule (unused = not an item of any lesson) prevents that; the database allows it.
+- **A check with an item deleted by a re-analysis can no longer be passed or retried:** it is neither complete nor failed. That is rare, but #89 has to decide what such a lesson offers, for example a retry on new positions. If it should be airtight, including one item deleted from each of two checks, `lesson_items` needs a check number (a new migration); not added here because the ADR does not have it.
+- Issue #88's body ends with a "Generated by Claude Code" footer (not created in this PR); left for Gergo.
+
+**Links:** [#88](https://github.com/Gergo019/blindspot-chess/issues/88), [PR #91](https://github.com/Gergo019/blindspot-chess/pull/91), [ADR 0008](decisions/0008-learning-journey.md), [#74](https://github.com/Gergo019/blindspot-chess/issues/74)
+
 ## 2026-11-27: Mastery retry needs unused positions (ADR 0008, open question (a))
 
 **Goal:** Decide ADR 0008's open question (a) before the backend journey is built: what a mastery retry uses when no unused positions are left. With the demo data this happens on the very first retry, because lesson 1 uses all 5 positions. Documentation only.
