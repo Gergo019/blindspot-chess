@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import io.github.gergo019.blindspot.account.User;
 import io.github.gergo019.blindspot.common.BaseEntity;
@@ -35,6 +36,8 @@ import jakarta.persistence.Table;
  *       positions already in the lesson (amendment of 2026-11-27). Which positions are unused across the
  *       user's lessons is the caller's to find ({@link LessonFilling#retryPositions}); this class refuses
  *       any position that is already one of its items.</li>
+ *   <li><b>A check item deleted by a re-analysis voids its check</b> ({@link #isCheckVoid}): the lesson
+ *       cannot be passed on the item that is left, and the check is retried like a failed one.</li>
  * </ul>
  */
 @Entity
@@ -81,7 +84,7 @@ public class LessonAssignment extends BaseEntity {
         assignment.curriculumVersion = Curriculum.VERSION;
         int checkFrom = drills.size() - Curriculum.CHECK_ITEMS;
         for (int i = 0; i < drills.size(); i++) {
-            assignment.add(drills.get(i), lesson, i < checkFrom ? LessonItem.Role.PRACTICE : LessonItem.Role.CHECK);
+            assignment.add(drills.get(i), lesson, i + 1, i < checkFrom ? LessonItem.Role.PRACTICE : LessonItem.Role.CHECK);
         }
         return assignment;
     }
@@ -95,7 +98,7 @@ public class LessonAssignment extends BaseEntity {
      * @throws IllegalMoveException if the move is not legal in the position; nothing is recorded
      */
     public DrillAttempt answer(int position, String moveUci, Instant now) {
-        LessonItem item = items.stream().filter(i -> i.getPosition() == position).findFirst()
+        LessonItem item = item(position)
                 .orElseThrow(() -> new IllegalArgumentException("Lesson " + lessonKey + " has no position " + position));
         DrillAttempt attempt = item.answer(moveUci, now);
         if (item.isCheck() && masteredAt == null && checkPassed()) {
@@ -104,10 +107,20 @@ public class LessonAssignment extends BaseEntity {
         return attempt;
     }
 
-    /** The current mastery check: the last {@link Curriculum#CHECK_ITEMS} check items. */
+    /**
+     * The current mastery check: the run of check items at consecutive positions that ends with the last check
+     * item. A check is added whole at consecutive positions, and a retry leaves a gap of one position before
+     * its pair ({@link #retry}), so two different checks are never neighbours: the run holds the items of one
+     * check only. It has fewer than {@link Curriculum#CHECK_ITEMS} items when a re-analysis deleted some.
+     */
     public List<LessonItem> currentCheck() {
         List<LessonItem> check = items.stream().filter(LessonItem::isCheck).toList();
-        return check.subList(Math.max(0, check.size() - Curriculum.CHECK_ITEMS), check.size());
+        int from = check.size();
+        while (from > 0 && check.size() - from < Curriculum.CHECK_ITEMS
+                && (from == check.size() || check.get(from - 1).getPosition() == check.get(from).getPosition() - 1)) {
+            from--;
+        }
+        return check.subList(from, check.size());
     }
 
     /** Both items of the current check solved first try. */
@@ -115,17 +128,9 @@ public class LessonAssignment extends BaseEntity {
         return isCurrentCheckComplete() && currentCheck().stream().allMatch(LessonItem::isSolvedFirstTry);
     }
 
-    /**
-     * The current check still has all its items. Checks are added whole, at consecutive positions, so after a
-     * re-analysis has deleted one check item the count is odd or the last two are not neighbours, and the
-     * remaining item does not combine with another check's. (One item deleted from each of two checks is not
-     * detected: that would need the check's number stored with the item.)
-     */
+    /** The current check still has all its items. */
     private boolean isCurrentCheckComplete() {
-        List<LessonItem> all = items.stream().filter(LessonItem::isCheck).toList();
-        List<LessonItem> check = currentCheck();
-        return all.size() % Curriculum.CHECK_ITEMS == 0 && check.size() == Curriculum.CHECK_ITEMS
-                && check.getLast().getPosition() - check.getFirst().getPosition() == Curriculum.CHECK_ITEMS - 1;
+        return currentCheck().size() == Curriculum.CHECK_ITEMS;
     }
 
     /** Every item of the current check is answered, at least one wrongly, and the lesson is not mastered. */
@@ -136,28 +141,45 @@ public class LessonAssignment extends BaseEntity {
     }
 
     /**
-     * How many more unused positions a retry needs, given how many the user has: 0 when a retry is possible,
-     * or when there is no failed check to retry.
+     * A re-analysis deleted an item of the current check (decided by Gergo for #89): the check is void. It can
+     * no longer be passed on the item that is left, and it is retried like a failed check. A passed lesson is
+     * never void: it stays passed.
      */
-    public int positionsNeededForRetry(int unusedPositions) {
-        return isCheckFailed() ? Math.max(0, Curriculum.CHECK_ITEMS - unusedPositions) : 0;
+    public boolean isCheckVoid() {
+        return !isMastered() && !isCurrentCheckComplete();
     }
 
-    /** A retry is possible now: the check failed and there are enough unused positions. */
-    public boolean isRetryAvailable(int unusedPositions) {
-        return isCheckFailed() && unusedPositions >= Curriculum.CHECK_ITEMS;
+    /** The lesson needs a new check: the current one failed or is void. */
+    public boolean needsNewCheck() {
+        return isCheckFailed() || isCheckVoid();
     }
 
     /**
-     * Retries the mastery check on new positions: adds them as check items after the existing items.
+     * How many more unused positions a retry needs, given how many the user has: 0 when a retry is possible,
+     * or when the lesson needs no new check.
+     */
+    public int positionsNeededForRetry(int unusedPositions) {
+        return needsNewCheck() ? Math.max(0, Curriculum.CHECK_ITEMS - unusedPositions) : 0;
+    }
+
+    /** A retry is possible now: the check failed or is void, and there are enough unused positions. */
+    public boolean isRetryAvailable(int unusedPositions) {
+        return needsNewCheck() && unusedPositions >= Curriculum.CHECK_ITEMS;
+    }
+
+    /**
+     * Retries the mastery check on new positions: adds them as check items after the existing items, leaving
+     * one position free after the highest. The gap keeps different checks apart ({@link #currentCheck}), also
+     * after a re-analysis deleted items: counting from the highest position, never from the number of items,
+     * a new item never takes a position that is in use.
      *
-     * @throws IllegalStateException if there is no failed check to retry (mastered, or not fully answered)
+     * @throws IllegalStateException if the lesson needs no new check (mastered, or the check not yet answered)
      * @throws IllegalArgumentException if not exactly {@link Curriculum#CHECK_ITEMS} drills are given, or one
      *         of them is already in this lesson, appears twice, or is another user's or of another motif
      */
     public void retry(List<Drill> unusedPositions) {
-        if (!isCheckFailed()) {
-            throw new IllegalStateException("Lesson " + lessonKey + " has no failed check to retry");
+        if (!needsNewCheck()) {
+            throw new IllegalStateException("Lesson " + lessonKey + " has no failed or void check to retry");
         }
         if (unusedPositions.size() != Curriculum.CHECK_ITEMS) {
             throw new IllegalArgumentException("A retry takes " + Curriculum.CHECK_ITEMS + " unused positions, not "
@@ -172,13 +194,14 @@ public class LessonAssignment extends BaseEntity {
             throw new IllegalArgumentException("A position is never repeated within a lesson");
         }
         // Checked before adding, so a refused retry changes nothing.
-        add(first, lesson, LessonItem.Role.CHECK);
-        add(second, lesson, LessonItem.Role.CHECK);
+        int start = items.stream().mapToInt(LessonItem::getPosition).max().orElse(0) + 2;
+        add(first, lesson, start, LessonItem.Role.CHECK);
+        add(second, lesson, start + 1, LessonItem.Role.CHECK);
     }
 
-    private void add(Drill drill, Curriculum.Lesson lesson, LessonItem.Role role) {
+    private void add(Drill drill, Curriculum.Lesson lesson, int position, LessonItem.Role role) {
         requireUsable(drill, lesson);
-        items.add(new LessonItem(this, drill, items.size() + 1, role));
+        items.add(new LessonItem(this, drill, position, role));
     }
 
     private void requireUsable(Drill drill, Curriculum.Lesson lesson) {
@@ -197,6 +220,11 @@ public class LessonAssignment extends BaseEntity {
     /** The same object, or the same saved row. */
     private static boolean same(BaseEntity a, BaseEntity b) {
         return a == b || (a.getId() != null && a.getId().equals(b.getId()));
+    }
+
+    /** The item at a position, if the lesson has one there. */
+    public Optional<LessonItem> item(int position) {
+        return items.stream().filter(i -> i.getPosition() == position).findFirst();
     }
 
     public Curriculum.Lesson lesson() {

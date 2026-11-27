@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,8 +32,9 @@ import io.github.gergo019.blindspot.game.Game;
 import io.github.gergo019.blindspot.game.GameRepository;
 
 /**
- * The lesson model (V6, #88) on a real PostgreSQL: the entity mappings, and the rules the database holds on
- * its own (one attempt per check item, the copied {@code is_check}, lesson items going with their drills).
+ * The lesson model (V6, #88; V7, #89) on a real PostgreSQL: the entity mappings, the rules the database holds
+ * on its own (one attempt per check item, the copied {@code is_check}, lesson items going with their drills,
+ * a drill in one lesson only), and the rules that depend on items a re-analysis deleted.
  */
 @SpringBootTest(properties = { "blindspot.lichess.importer.enabled=false", "blindspot.analysis.job.enabled=false",
         "blindspot.training.drill-preparation.enabled=false" })
@@ -185,13 +187,11 @@ class LessonModelIT {
                 Boolean.class, lessonId)).isTrue();
     }
 
-    @Test
-    void aCheckWithAnItemDeletedNeverCombinesWithAnotherCheck() {
-        answer(4, "f3e5", NOW);   // the first check fails
-        answer(5, "f3d4", NOW);
-        long[] retry = tx.execute(s -> {
+    /** Retries the lesson's check on two new positions from a new game. */
+    private void retry(String gameId) {
+        tx.executeWithoutResult(s -> {
             ChessAccount account = accounts.findAll().get(0);
-            Game game = games.save(TestData.game(account, "g2"));
+            Game game = games.save(TestData.game(account, gameId));
             List<Drill> fresh = new ArrayList<>();
             for (int ply = 1; ply <= 3; ply += 2) {
                 fresh.add(drills.save(Drill.fromFinding(user,
@@ -199,14 +199,99 @@ class LessonModelIT {
                         TestData.forkJudgement(), NOW)));
             }
             lessons.findById(lessonId).orElseThrow().retry(fresh);
-            return new long[] { fresh.get(0).getId(), fresh.get(1).getId() };
         });
-        jdbc.update("DELETE FROM drills WHERE id = ?", retry[1]);   // a re-analysis removes position 7
+    }
 
-        answer(6, "f3d4", NOW.plusSeconds(60));   // right, and position 5 was right too
+    /** As a re-analysis does: the finding goes, and with it the drill and its lesson item. */
+    private void deletePosition(int position) {
+        jdbc.update("DELETE FROM drills WHERE id = ?", drillOf(position));
+    }
 
-        assertThat(jdbc.queryForObject("SELECT mastered_at IS NULL FROM lesson_assignments WHERE id = ?",
-                Boolean.class, lessonId)).isTrue();
+    private <T> T inLesson(Function<LessonAssignment, T> read) {
+        return tx.execute(s -> read.apply(lessons.findById(lessonId).orElseThrow()));
+    }
+
+    private List<Integer> currentCheck() {
+        return inLesson(l -> l.currentCheck().stream().map(LessonItem::getPosition).toList());
+    }
+
+    private int positionsNeededForRetry(int unused) {
+        Integer needed = inLesson(l -> l.positionsNeededForRetry(unused));
+        return needed;
+    }
+
+    private boolean mastered() {
+        return jdbc.queryForObject("SELECT mastered_at IS NOT NULL FROM lesson_assignments WHERE id = ?",
+                Boolean.class, lessonId);
+    }
+
+    @Test
+    void aCheckWithAnItemDeletedNeverCombinesWithAnotherCheck() {
+        answer(4, "f3e5", NOW);   // the first check fails
+        answer(5, "f3d4", NOW);
+        retry("g2");              // positions 7 and 8; 6 stays free
+        deletePosition(8);        // a re-analysis removes the retry's second item
+
+        answer(7, "f3d4", NOW.plusSeconds(60));   // right, and position 5 was right too
+
+        assertThat(mastered()).isFalse();
+        assertThat(inLesson(LessonAssignment::isCheckVoid)).isTrue();
+    }
+
+    @Test
+    void aCheckItemDeletedBeforeTheCheckVoidsItAndARetryReplacesIt() {
+        deletePosition(5);
+
+        assertThat(inLesson(LessonAssignment::isCheckVoid)).isTrue();
+        assertThat(positionsNeededForRetry(0)).isEqualTo(2);
+        answer(4, "f3d4", NOW);   // the item that is left cannot pass the check
+        assertThat(mastered()).isFalse();
+
+        retry("g2");
+        assertThat(currentCheck()).containsExactly(6, 7);
+        answer(6, "f3d4", NOW.plusSeconds(10));
+        answer(7, "f3d4", NOW.plusSeconds(20));
+
+        assertThat(mastered()).isTrue();
+    }
+
+    @Test
+    void oneItemDeletedFromEachOfTwoChecksVoidsTheCheck() {
+        answer(4, "f3e5", NOW);   // the first check fails, position 5 right
+        answer(5, "f3d4", NOW);
+        retry("g2");
+        answer(7, "f3d4", NOW);   // right on the retry's first item
+
+        deletePosition(4);        // one item of each check: 5 and 7, both right, are left
+        deletePosition(8);
+
+        assertThat(currentCheck()).containsExactly(7);
+        assertThat(inLesson(LessonAssignment::isCheckVoid)).isTrue();
+        assertThat(mastered()).isFalse();
+    }
+
+    @Test
+    void aRetryAfterADeletedPracticeItemTakesPositionsAfterTheHighest() {
+        deletePosition(3);
+        answer(4, "f3e5", NOW);
+        answer(5, "f3d4", NOW);
+
+        retry("g2");   // counting items would give 5, which is taken
+
+        assertThat(jdbc.queryForList("SELECT position FROM lesson_items WHERE assignment_id = ? ORDER BY position",
+                Integer.class, lessonId)).containsExactly(1, 2, 4, 5, 7, 8);
+    }
+
+    @Test
+    void aDrillBelongsToOneLessonOnly() {
+        long otherLesson = jdbc.queryForObject("INSERT INTO lesson_assignments (user_id, lesson_key, "
+                + "curriculum_version) VALUES (?, 'hanging-piece/2', ?) RETURNING id", Long.class, user.getId(),
+                Curriculum.VERSION);
+
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO lesson_items (assignment_id, drill_id, position, role) "
+                + "VALUES (?, ?, 1, 'PRACTICE')", otherLesson, drillOf(1)))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("lesson_items_drill_uq");
     }
 
     @Test

@@ -1,7 +1,7 @@
 # 0008: Learning journey, slice 1 (Hanging Pieces)
 
 - Status: accepted
-- Date: 2026-11-21 (#77), amended 2026-11-27 (the mastery retry rule, open question (a); see the [amendment](#amendment-2026-11-27-a-retry-needs-unused-positions))
+- Date: 2026-11-21 (#77), amended 2026-11-27 (the mastery retry rule, open question (a); see the [amendment](#amendment-2026-11-27-a-retry-needs-unused-positions)), and again on 2026-11-27 (lesson positions, the check, and re-analysis, #89; see the [second amendment](#amendment-2026-11-27-89-lesson-positions-the-check-and-re-analysis))
 - Design and decisions: [#74](https://github.com/Gergo019/blindspot-chess/issues/74) (proposal and answers in its comments)
 
 ## Context
@@ -28,7 +28,7 @@ The tables, in a migration after #36's (numbers assigned when they land):
 | Table or column | Content |
 |---|---|
 | `lesson_assignments` | `user_id`, `lesson_key`, `curriculum_version`, `mastered_at` (set only by passing the check); unique `(user_id, lesson_key)` |
-| `lesson_items` | `assignment_id`, `drill_id`, `position`, `role` (`PRACTICE` or `CHECK`); unique `(assignment_id, position)` and `(assignment_id, drill_id)` |
+| `lesson_items` | `assignment_id`, `drill_id`, `position`, `role` (`PRACTICE` or `CHECK`); unique `(assignment_id, position)` and `(assignment_id, drill_id)`, and since #89 unique `drill_id`: a drill belongs to at most one lesson ([second amendment](#amendment-2026-11-27-89-lesson-positions-the-check-and-re-analysis)) |
 | `drill_attempts.lesson_item_id` | the lesson item an attempt answered; NULL for a review from the SM-2 queue |
 | `drill_attempts.is_check` | copied from the item's role, so a **partial unique index** allows one attempt per check item. A partial index cannot look at another table, and a rule that protects data belongs in the database too ([CONTRIBUTING](../../CONTRIBUTING.md#database)). |
 
@@ -111,7 +111,7 @@ Mastery in slice 1 is measured on the user's **own positions**. The user may hav
 - Lessons stay stable once assigned, and progress cannot move under the user: it rests on stored attempts and one stored fact per lesson (`mastered_at`).
 - Every claim on a lesson screen has board evidence, including claims about moves the user tried and the game never had.
 - Each drill costs about one search per legal move in the background, roughly 35 searches; the real figure and the budget come from #78. A change of engine depth means new verdicts, versioned like the detector.
-- **Re-analysis:** drills are deleted with their findings (`ON DELETE CASCADE`), and lesson items with their drills. `mastered_at` stays on the assignment: mastery records what happened, not a live view.
+- **Re-analysis:** drills are deleted with their findings (`ON DELETE CASCADE`), and lesson items with their drills. `mastered_at` stays on the assignment: mastery records what happened, not a live view. A deleted check item voids its check ([second amendment](#amendment-2026-11-27-89-lesson-positions-the-check-and-re-analysis)).
 - **The demo shows one lesson.** The Playwright scenarios use the demo data as their oracle, as the findings tests do: with "Find a safe move" alone, 5 findings give 5 drills, exactly lesson 1 (3 practice, 2 check), if all 5 pass the sanity rule. A detector change that changes this updates the scenarios in the same PR.
 - **With the demo data, a failed check cannot be retried** ([amendment of 2026-11-27](#amendment-2026-11-27-a-retry-needs-unused-positions)): lesson 1 uses all 5 positions. A Playwright scenario that fails the check therefore expects no "Retry the mastery check", but "2 more positions needed" and the way back to practice. The retry itself (a new pair of check items) cannot be shown with the demo data; backend tests cover it with their own positions. When "See the capture" arrives and doubles the drills per finding, the demo will have unused positions again, and the scenarios change with it.
 - **Bounded contexts:** the training context reads findings, games and the blind-spot report through the analysis context's read services (such as `FindingReadService`), not through its repositories.
@@ -147,3 +147,36 @@ Mastery in slice 1 is measured on the user's **own positions**. The user may hav
 - **A retry takes positions from the pool in the order of open question (b)**, so for a player with few findings, retries delay later lessons. Accepted: a retry is the user's own choice, and the map shows the effect.
 - **The database rule stays as it is.** The unique `(assignment_id, drill_id)` on `lesson_items` already prevents a repeated position; the "2 unused positions" check is a domain rule in the training context.
 - **Rejected: repeating the check positions, marked as a repeat** (option A). A retry would always be possible, and the result would say plainly that it measures memory, not transfer. Not chosen, because a repeat would still set `mastered_at`, and "mastered" would then mean different things on different lessons.
+
+## Amendment 2026-11-27 (#89): lesson positions, the check, and re-analysis
+
+**Context:** the lesson model (#88, PR #91) had to choose three things this ADR leaves open: how unassigned lessons share positions, which positions are the check, and whether a drill may be in two lessons. A re-analysis can also delete a check item, which leaves a check with one item. Decided by Gergo for the lesson service (#89).
+
+**Decision:**
+- **Unassigned lessons take positions in lesson order:** each takes up to 7 of what the lessons before it left, and can be assigned with at least 5 (3 practice + 2 check).
+- **The last 2 positions of a lesson are its check**, after the practice.
+- **A drill belongs to at most one lesson:** unique `lesson_items.drill_id` (migration V7). This replaces the first amendment's "the database rule stays as it is".
+- **A check item deleted by a re-analysis voids that check.** It is treated like a failed check:
+  - the lesson stays `IN_PROGRESS`, and the item that is left cannot pass it;
+  - a new pair of check items starts under the existing retry rule (at least 2 unused positions, never a repeated position);
+  - with fewer unused positions, nothing changes and the lesson reports how many positions a retry still needs;
+  - a passed lesson stays passed.
+- **No check number on `lesson_items`.** A retry's pair leaves one position free after the highest position in the lesson (a 5-item lesson retries on 7 and 8). The current check is the run of consecutive check positions that ends with the last check item. Two checks are therefore never neighbours, so the items that are left of two different checks never count as one check. This holds also when one item of each of two checks is deleted. The gap was chosen in #89.
+
+**Why:**
+- **Lesson order:** all lessons are open (soft locking). Without an order, opening lesson 3 first would take lesson 1's positions. With the demo data, only lesson 1 fills (#74).
+- **One lesson per drill:** "unused" means not in any of the user's lessons. A rule that protects data belongs in the database too ([CONTRIBUTING](../../CONTRIBUTING.md#database)).
+- **A void check is not a check:** passing on one item would be progress that is not from solving the check's puzzles (#74). Retrying a void check like a failed one reuses the retry rule and needs no new state.
+
+**What changed:**
+
+| Before | After |
+|---|---|
+| Sharing positions and the check's place not decided | Lesson order, up to 7 each; the last 2 are the check |
+| A drill in two lessons prevented only in the domain | Unique `lesson_items.drill_id` (V7) |
+| A check with a deleted item: neither passable nor retryable (PR #91) | Void: retried like a failed check |
+| A retry on the next positions | A retry leaves one position free (1–5, then 7 and 8) |
+
+**Consequences:**
+- **Positions in a lesson can have gaps:** from retries, and from items a re-analysis deleted. A position names an item; it is not a count. The lesson API (#90) shows the items in position order.
+- **A re-analysis that deletes practice items does not refill the lesson.** A lesson that has been assigned does not change, so it may have fewer than 3 practice items afterwards.

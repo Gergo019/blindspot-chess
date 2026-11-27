@@ -11,11 +11,16 @@ import org.springframework.web.ErrorResponseException;
 public class NotFoundException extends ErrorResponseException {
 
     public NotFoundException(String what, long id) {
-        super(HttpStatus.NOT_FOUND, problem(what, id), null);
+        super(HttpStatus.NOT_FOUND, problem("No " + what + " with id " + id), null);
     }
 
-    private static ProblemDetail problem(String what, long id) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "No " + what + " with id " + id);
+    /** For resources with a key rather than an id, such as a lesson ({@code hanging-piece/1}). */
+    public NotFoundException(String what, String key) {
+        super(HttpStatus.NOT_FOUND, problem("No " + what + " " + key), null);
+    }
+
+    private static ProblemDetail problem(String detail) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, detail);
         problem.setTitle("Not found");
         return problem;
     }

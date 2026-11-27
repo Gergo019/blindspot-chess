@@ -4,6 +4,66 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-27: Lesson service and mastery rules (#89 / PR #92)
+
+**Goal:** A player can start a lesson, answer its puzzles and pass the mastery check, with every rule enforced in the backend (ADR 0008 and its amendments). Slice 2 of the journey backend, on the lesson model of #88. No HTTP layer yet; the endpoints come in #90.
+
+**Changes:**
+- **`LessonService`** (training context, current player):
+  - `lessons()`, `lesson(key)`, `start(key)` and `answer(key, position, move)`;
+  - derived states `NEEDS_POSITIONS`, `AVAILABLE`, `IN_PROGRESS`, `MASTERED`, the "recommended" flag, the positions still needed and `retryAvailable`. Nothing new is stored.
+- **Answers:** through `LessonAssignment.answer` → `Drill.answer`, with the stored-verdict lookup and SM-2 of #36. `DrillService.answerOf` builds the answer with its evidence for both paths.
+- **`FindingReadService.factsByFinding(motif)`:** the training context reads the facts it orders positions by through the analysis context's read side, not its repository.
+- **`LessonAssignment`:**
+  - a check item deleted by a re-analysis voids the check (`isCheckVoid`, `needsNewCheck`), and a void check is retried like a failed one;
+  - a retry's pair starts at the highest position + 2;
+  - `currentCheck` is the run of consecutive check positions ending at the last check item.
+- **Migration `V7__one_lesson_per_drill.sql`:** unique `lesson_items.drill_id`. The V6 index on `drill_id` is replaced by the constraint's index. V1 to V6 are unchanged.
+- **`NotFoundException`:** a constructor for keys (`hanging-piece/1`).
+- **Tests:**
+  - `lesson_mastery.feature` (7 scenarios, `LessonSteps`, through the service);
+  - `LessonServiceIT` (11);
+  - `LessonModelIT` (+4);
+  - `LessonAssignmentTest` (+2).
+- **ADR 0008:** a second dated amendment (2026-11-27, #89) records the decisions below. The `lesson_items` row and the re-analysis consequence point to it.
+
+**Decisions:**
+- **Decided by Gergo:**
+  - lessons take positions in lesson order, the last 2 are the check (both as in #91);
+  - a drill belongs to at most one lesson, held in the database (V7);
+  - a deleted check item voids the check, which is retried under the existing rule;
+  - no check-number column.
+- **The retry leaves a gap (chosen here):**
+  - **Why the old rule failed:** the even-count rule from #91 cannot support a void check. After one check item is deleted and a retry adds a pair, the number of check items is odd for good, so the lesson could never be mastered.
+  - **The rule now:** a retry's pair starts one position after a free one (1–5, then 7 and 8). Two checks are never neighbours, so the current check is simply the run of consecutive check positions at the end. The case #91 could not detect, one item deleted from each of two checks, is now detected without a check number (tested).
+  - **Rejected:**
+    - a check-number column (Gergo: no);
+    - counting checks by item creation time, which is not reliable inside one transaction.
+- **Positions are counted from the highest, not from the number of items.** `items.size() + 1` (#91) reuses a taken position after a re-analysis deleted an earlier item, and the unique `(assignment_id, position)` would refuse the retry.
+- **The database refusal of a concurrent second check answer is the same conflict.** The service flushes the attempt and turns a violation of the partial index into `CheckAlreadyAnsweredException`, so #90 maps one exception to 409.
+- **"Recommended next" is the first lesson, in order, that is available or in progress.** A lesson that needs positions is never recommended. With the demo data, nothing is recommended once lesson 1 is mastered.
+- **Starting a lesson whose check is still being answered changes nothing.** A retry starts only after the whole check is answered (and failed) or is void (as in #91).
+
+**Verification:**
+- **`mvn verify` in `backend/`** (pinned Maven image, Testcontainers): 135 unit tests (133 + 2) and 139 integration tests (117 + 22: `LessonServiceIT` 11, `LessonModelIT` 4, 7 Cucumber scenarios), all passing.
+- **Mutation check** (throwaway worktree): each of these makes the targeted tests fail:
+  - V7 without the unique constraint;
+  - the service without the translation of the database refusal;
+  - the retry at the highest position + 1.
+- CI on this PR.
+
+**Open points / risks:**
+- **A re-analysis that deletes practice items does not refill the lesson.** An assigned lesson does not change, so it may have fewer than 3 practice items afterwards (in the ADR amendment).
+- **Rare races are not translated:**
+  - an answer while a re-analysis deletes that item fails on the foreign key;
+  - two first starts of the same lesson at once hit the unique `(user_id, lesson_key)`.
+  
+  Both are left to #90's error handling (a plain 500 today).
+- **Loading items reads each item's drill separately** (at most 7 per lesson plus retries). Fine for slice 1; batch it if lessons grow.
+- **#90 has to map the exceptions:** `CheckAlreadyAnsweredException` → 409, `IllegalMoveException` → 400 or 422, and `NotFoundException` → 404.
+
+**Links:** [#89](https://github.com/Gergo019/blindspot-chess/issues/89), [PR #92](https://github.com/Gergo019/blindspot-chess/pull/92), [ADR 0008](decisions/0008-learning-journey.md), [#88](https://github.com/Gergo019/blindspot-chess/issues/88)
+
 ## 2026-11-27: Lesson model and curriculum (#88 / PR #91)
 
 **Goal:** The stored lesson model of the learning journey (ADR 0008, "Curriculum, progress and what is stored", and the amendment of 2026-11-27), before it has a service or an API: which drills belong to which lesson for a player, when the player passed the lesson's mastery check, the curriculum in code, and the rules. Slice 1 of the journey backend; the lesson service and Cucumber features (#89) and the endpoints (#90) follow.
