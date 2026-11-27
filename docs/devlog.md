@@ -4,6 +4,34 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-27: Mastery retry needs unused positions (ADR 0008, open question (a))
+
+**Goal:** Decide ADR 0008's open question (a) before the backend journey is built: what a mastery retry uses when no unused positions are left. With the demo data this happens on the very first retry, because lesson 1 uses all 5 positions. Documentation only.
+
+**Changes:**
+- `docs/decisions/0008-learning-journey.md`:
+  - a dated amendment (2026-11-27) with the decision, the reasons, what changed and the consequences, in the style of ADR 0007's amendment;
+  - the header's date line points to it;
+  - "Mastery": a retry right away only on 2 unused positions; check positions are never repeated within a lesson; otherwise "positions still needed", practice and reviews;
+  - "Soft locking": no new lesson state; a lesson with a failed check stays `IN_PROGRESS`, with the derived `retryAvailable` and "positions still needed";
+  - "API": `GET /api/journey` and `GET /api/lessons/{key}` carry `retryAvailable`; `POST /api/lessons/{key}` also starts a retry, and with too few unused positions changes nothing and returns the lesson (200);
+  - "Rejected options", "Consequences" (the demo and the Playwright scenario for a failed check), and "Open questions": (a) points to the amendment, (b) stays open, with a note that retries draw from the same order.
+
+**Decisions:**
+- **A retry is offered only when at least 2 unused positions exist (option B), decided by Gergo.** A repeated check would measure memory, while the ADR says mastery "never calls it transfer" and progress comes only from solving puzzles. Rejected: repeating the same check positions, marked as a repeat (option A), because the repeat would still set `mastered_at`.
+- **No new lesson state and no error for "no retry possible".** It is a fact about the data, like `NEEDS_POSITIONS`, so `POST` returns 200 with the lesson unchanged. Rejected: a 409, which would make a normal situation look like a failure.
+
+**Verification:** documentation only. Every relative link and anchor in ADR 0008 resolves (checked against the files and the headings).
+
+**Open points / risks:**
+- Places that still say the old thing and are left as they are:
+  - ADR 0007's amendment lists "Retry the mastery check" in the result without the condition; ADR 0008 now governs it;
+  - issue #74 (the design proposal and the answers comment, "A failed check can be retried right away");
+  - the 2026-11-21 devlog entry for ADR 0008 ("with an immediate retry"), which is history.
+- With the demo data, the retry itself cannot be shown end to end until "See the capture" adds drills.
+
+**Links:** [ADR 0008](decisions/0008-learning-journey.md#amendment-2026-11-27-a-retry-needs-unused-positions), [#74](https://github.com/Gergo019/blindspot-chess/issues/74)
+
 ## 2026-11-27: Problem details always carry "instance" (#85 / PR #86)
 
 **Goal:** Unblock Dependabot PR #82 (Spring Boot 4.1.2 → 4.2.0, springdoc 3.2.0 → 3.2.1). Its Backend check failed in `ReadApiIT.unknownApiPathsAre404ProblemDetails`: the 404 body for an unknown `/api/...` path had no `instance` field. Find the cause, and make every problem detail from the API carry `instance` again, on both versions, without loosening the "no internals" rule of #51 and #60.

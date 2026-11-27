@@ -1,7 +1,7 @@
 # 0008: Learning journey, slice 1 (Hanging Pieces)
 
 - Status: accepted
-- Date: 2026-11-21 (#77)
+- Date: 2026-11-21 (#77), amended 2026-11-27 (the mastery retry rule, open question (a); see the [amendment](#amendment-2026-11-27-a-retry-needs-unused-positions))
 - Design and decisions: [#74](https://github.com/Gergo019/blindspot-chess/issues/74) (proposal and answers in its comments)
 
 ## Context
@@ -58,24 +58,27 @@ The tables, in a migration after #36's (numbers assigned when they land):
 - **Answer checking happens in the backend, by looking the move up in the stored verdicts.** Every legal move has a verdict, so every wrong answer comes with board evidence (product rule 2), not just "not in the set". An illegal move is rejected.
 - **"Solved first try"** means the first attempt in the lesson was correct; only that counts for mastery. Every attempt is written to `drill_attempts` and goes through SM-2 as before, so lesson puzzles return later as reviews.
 
-### Mastery: 2 check puzzles, both right first try, with an immediate retry
+### Mastery: 2 check puzzles, both right first try, with a retry on new positions
 
 - A lesson is **mastered** when both of its 2 check puzzles are answered correctly on their single attempt. Only that sets `mastered_at`, in the domain (product rule from #74: progress comes only from solving puzzles).
 - A check puzzle is answered once; a second answer is refused (HTTP 409) and the database enforces it (the partial index above).
-- **A failed check can be retried right away.** A retry is a new pair of check items.
+- **A failed check can be retried right away, but only on 2 unused positions** (see the [amendment of 2026-11-27](#amendment-2026-11-27-a-retry-needs-unused-positions)). A retry is a new pair of check items, added to the same assignment. An unused position is a drill that is not yet an item of any of the user's lessons.
+- **Positions are never repeated as check items within a lesson.** The unique `(assignment_id, drill_id)` on `lesson_items` already enforces it.
+- When fewer than 2 unused positions exist, no retry is offered: the lesson shows how many more positions a retry needs, and the user continues with practice and SM-2 reviews.
 
 ### Soft locking
 
 - **All lessons are open, with a recommended order.** The map marks the recommended next lesson. Nothing is hidden or locked behind progress. A lesson that cannot be filled yet is shown as needing more positions, which is a fact about the data, not a lock.
 - Lesson states: `NEEDS_POSITIONS`, `AVAILABLE`, `IN_PROGRESS`, `MASTERED`, plus "recommended next" as a flag. None of them is stored; all are derived.
+- **A failed check needs no new state.** The lesson stays `IN_PROGRESS` until it is mastered. Two derived fields describe the retry: `retryAvailable` (the check failed and at least 2 unused positions exist) and the existing "positions still needed", which then counts the positions a retry still needs. `NEEDS_POSITIONS` stays reserved for a lesson that cannot be assigned yet.
 
 ### API
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/journey` | the map: the unit with its lessons (key, number, title, state, recommended, solved first try, size, positions still needed) and the motif's line from the blind-spot report ("in 5 of your last 20 rapid games") |
-| `POST /api/lessons/{key}` | starts the lesson: assigns it if it can be filled (idempotent), returns it |
-| `GET /api/lessons/{key}` | the explanation and the items in order (position, role, task, FEN, orientation, prompt, answered, correct). The game and the solution only for answered items; the result is part of the same response |
+| `GET /api/journey` | the map: the unit with its lessons (key, number, title, state, recommended, solved first try, size, positions still needed, retry available) and the motif's line from the blind-spot report ("in 5 of your last 20 rapid games") |
+| `POST /api/lessons/{key}` | starts the lesson: assigns it if it can be filled (idempotent), returns it. On a lesson whose check failed, it starts the retry: it adds a new pair of check items if 2 unused positions exist. If not, it changes nothing and returns the lesson as it is (200, `retryAvailable: false`, the positions still needed); that is a fact about the data, not an error |
+| `GET /api/lessons/{key}` | the explanation and the items in order (position, role, task, FEN, orientation, prompt, answered, correct). The game and the solution only for answered items; the result is part of the same response, including `retryAvailable` and the positions a retry still needs |
 | `POST /api/lessons/{key}/items/{position}/answer` | `{moveUci}` → correct, first try, the move's verdict and refutation, the engine's move, the accepted moves, the game's move and evidence line, the lesson state |
 
 These are the first endpoints that change data, and there is no sign-in yet ([#60](https://github.com/Gergo019/blindspot-chess/issues/60)). The POSTs accept only `Content-Type: application/json`, so a cross-site form cannot reach them (a cross-origin JSON request needs a CORS preflight, which the backend does not allow), with a test. Queries take the user id from `CurrentPlayer`, like the read API.
@@ -101,6 +104,7 @@ Mastery in slice 1 is measured on the user's **own positions**. The user may hav
 - **Checking answers in the frontend:** the accepted moves would be in the page before the answer, and the rule would exist twice.
 - **Asking the engine at answer time:** seconds of waiting, the analysis service must be up while the user plays, and no stored, reproducible result per drill.
 - **Strict locking** (a lesson opens only after the previous one is mastered): considered in #74 and not chosen. It is a game mechanic more than a learning aid, and ADR 0007 keeps those out.
+- **Repeating the check positions in a retry** when no unused positions are left: rejected in the [amendment of 2026-11-27](#amendment-2026-11-27-a-retry-needs-unused-positions).
 
 ## Consequences
 
@@ -109,10 +113,37 @@ Mastery in slice 1 is measured on the user's **own positions**. The user may hav
 - Each drill costs about one search per legal move in the background, roughly 35 searches; the real figure and the budget come from #78. A change of engine depth means new verdicts, versioned like the detector.
 - **Re-analysis:** drills are deleted with their findings (`ON DELETE CASCADE`), and lesson items with their drills. `mastered_at` stays on the assignment: mastery records what happened, not a live view.
 - **The demo shows one lesson.** The Playwright scenarios use the demo data as their oracle, as the findings tests do: with "Find a safe move" alone, 5 findings give 5 drills, exactly lesson 1 (3 practice, 2 check), if all 5 pass the sanity rule. A detector change that changes this updates the scenarios in the same PR.
+- **With the demo data, a failed check cannot be retried** ([amendment of 2026-11-27](#amendment-2026-11-27-a-retry-needs-unused-positions)): lesson 1 uses all 5 positions. A Playwright scenario that fails the check therefore expects no "Retry the mastery check", but "2 more positions needed" and the way back to practice. The retry itself (a new pair of check items) cannot be shown with the demo data; backend tests cover it with their own positions. When "See the capture" arrives and doubles the drills per finding, the demo will have unused positions again, and the scenarios change with it.
 - **Bounded contexts:** the training context reads findings, games and the blind-spot report through the analysis context's read services (such as `FindingReadService`), not through its repositories.
 - Multi-move puzzles and one-try transfer puzzles are not needed in slice 1 (every Hanging Pieces puzzle is a single move); they are recorded in #36's note for the transfer slice.
 
 ## Open questions
 
-- **(a) What a mastery retry uses when there are no unused positions left.** A retry is a new pair of check items, but with the demo data, lesson 1 uses all 5 positions, so the very first retry has none left. Options: repeat the same check positions (marked as a repeat in the result, and arguably measuring memory even more), or offer the retry only once new positions exist (the map says how many are needed). Open; decide before the backend journey is built.
-- **(b) Order of positions across lessons.** The initial heuristic (higher `materialLost` first, discovered losses last) is a guess; tune it on real data.
+- **(a) What a mastery retry uses when there are no unused positions left:** decided on 2026-11-27, a retry needs unused positions. See the [amendment](#amendment-2026-11-27-a-retry-needs-unused-positions).
+- **(b) Order of positions across lessons.** The initial heuristic (higher `materialLost` first, discovered losses last) is a guess; tune it on real data. A retry draws its pair from the same order, so it takes positions a later lesson would otherwise get.
+
+## Amendment 2026-11-27: a retry needs unused positions
+
+**Context:** open question (a) above. A retry is a new pair of check items, but with the demo data, lesson 1 uses all 5 positions, so the first retry has none left. Two options were on the table: repeat the same check positions, marked as a repeat, or offer a retry only once unused positions exist. Decided by Gergo.
+
+**Decision:** a mastery retry is offered **only when at least 2 unused positions exist** for a new pair of check items. Otherwise the lesson shows how many more positions a retry needs (the existing "positions still needed" fact), and the user continues with practice and SM-2 reviews. **Positions are never repeated as check items within a lesson.**
+
+**Why:**
+- **A repeated check would measure memory, and the result would have to say so.** The result already explains that mastery on the user's own positions partly measures memory and **never calls it transfer** ("What mastery means in slice 1"). A check on positions the user has just seen solved, with the answer shown after each one, would be memory only. Calling that "mastered" would stretch the claim past what the evidence shows.
+- **Progress comes only from solving puzzles** (#74). A repeat would let the user reach `mastered_at` by remembering two answers, which is progress from retrying, not from solving. With unused positions, every passed check is two positions solved on the first try, seen for the first time as a check.
+- **Waiting is a fact about the data, not a lock.** "2 more positions needed" is the same kind of message as for a lesson that cannot be filled yet (soft locking above, and "no locks" in ADR 0007's amendment). Practice and reviews stay open, so nothing is held back.
+
+**What changed:**
+
+| Before | After |
+|---|---|
+| "A failed check can be retried right away. A retry is a new pair of check items." | A retry right away **only on 2 unused positions**; check positions are never repeated within a lesson; otherwise "N more positions needed" and practice and reviews |
+| Lesson states without a retry rule | No new state: a lesson with a failed check stays `IN_PROGRESS`; derived `retryAvailable`, and "positions still needed" counts what a retry needs |
+| `POST /api/lessons/{key}`: starts the lesson | also starts a retry; with too few unused positions it changes nothing and returns the lesson (200, `retryAvailable: false`) |
+| Open question (a) | decided (this amendment) |
+
+**Consequences:**
+- **Demo data:** lesson 1 uses all 5 positions, so a failed check in the demo cannot be retried until new positions exist (new analysed games, or "See the capture", which doubles the drills per finding). The Playwright scenario for a failed check shows "2 more positions needed", not a retry button; the retry is tested in the backend.
+- **A retry takes positions from the pool in the order of open question (b)**, so for a player with few findings, retries delay later lessons. Accepted: a retry is the user's own choice, and the map shows the effect.
+- **The database rule stays as it is.** The unique `(assignment_id, drill_id)` on `lesson_items` already prevents a repeated position; the "2 unused positions" check is a domain rule in the training context.
+- **Rejected: repeating the check positions, marked as a repeat** (option A). A retry would always be possible, and the result would say plainly that it measures memory, not transfer. Not chosen, because a repeat would still set `mastered_at`, and "mastered" would then mean different things on different lessons.
