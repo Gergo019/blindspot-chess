@@ -2,7 +2,9 @@ package io.github.gergo019.blindspot.analysis;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -76,6 +78,17 @@ public class FindingReadService {
                 move.getClassification().name(), finding.getDetectorVersion(),
                 new Engine(engine.version(), engine.depth(), engine.threads(), engine.hashMb()), game(game),
                 explanation);
+    }
+
+    /**
+     * The facts of each of the current player's findings of a motif, keyed by finding id: what the training
+     * context orders lesson positions by (ADR 0008). Empty without a player.
+     */
+    public Map<Long, Facts> factsByFinding(Motif motif) {
+        return player.userId()
+                .map(userId -> findings.findByUserAndMotif(userId, motif).stream()
+                        .collect(Collectors.toMap(MistakeFinding::getId, this::facts)))
+                .orElse(Map.of());
     }
 
     private FindingSummary summary(MistakeFinding finding) {

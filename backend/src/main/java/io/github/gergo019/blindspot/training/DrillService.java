@@ -45,8 +45,14 @@ public class DrillService {
         Drill drill = drills.findById(drillId).orElseThrow(() -> new NotFoundException("drill", drillId));
         DrillAttempt attempt = drill.answer(move, clock.instant());
         attempts.save(attempt);
+        return answerOf(attempt);
+    }
+
+    /** The answer with its evidence, for an attempt {@link Drill#answer} made (also inside a lesson). */
+    static Answer answerOf(DrillAttempt attempt) {
+        Drill drill = attempt.getDrill();
         MoveVerdict verdict = drill.verdictFor(attempt.getMoveUci());
-        return new Answer(drillId, attempt.getMoveUci(), verdict.san(), attempt.isCorrect(), verdict.drop(),
+        return new Answer(drill.getId(), attempt.getMoveUci(), verdict.san(), attempt.isCorrect(), verdict.drop(),
                 verdict.refutationUci(), drill.getSolutionUci(), drill.acceptedMoves());
     }
 }

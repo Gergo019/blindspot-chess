@@ -230,9 +230,31 @@ class LessonAssignmentTest {
 
         lesson.retry(drills(2));
 
-        assertThat(lesson.getItems()).hasSize(7);
-        assertThat(lesson.currentCheck()).extracting(LessonItem::getPosition).containsExactly(6, 7);
+        // Position 6 stays free, so the new check never joins the old one (see the void-check tests in LessonModelIT).
+        assertThat(lesson.getItems()).extracting(LessonItem::getPosition).containsExactly(1, 2, 3, 4, 5, 7, 8);
+        assertThat(lesson.currentCheck()).extracting(LessonItem::getPosition).containsExactly(7, 8);
         assertThat(lesson.isCheckFailed()).isFalse();   // the new check is not answered yet
+        assertThat(lesson.needsNewCheck()).isFalse();
+        assertThat(lesson.isRetryAvailable(2)).isFalse();
+    }
+
+    @Test
+    void aCompleteCheckIsNotVoid() {
+        assertThat(demoLesson().isCheckVoid()).isFalse();
+        assertThat(failedCheck().isCheckVoid()).isFalse();
+        assertThat(failedCheck().needsNewCheck()).isTrue();
+    }
+
+    @Test
+    void aSecondRetryLeavesAGapAgain() {
+        LessonAssignment lesson = failedCheck();
+        lesson.retry(drills(2));
+        lesson.answer(7, WRONG, NOW);
+        lesson.answer(8, RIGHT, NOW);
+
+        lesson.retry(drills(2));
+
+        assertThat(lesson.currentCheck()).extracting(LessonItem::getPosition).containsExactly(10, 11);
     }
 
     @Test
@@ -240,8 +262,8 @@ class LessonAssignmentTest {
         LessonAssignment lesson = failedCheck();
         lesson.retry(drills(2));
 
-        lesson.answer(6, RIGHT, NOW.plusSeconds(100));
-        lesson.answer(7, RIGHT, NOW.plusSeconds(200));
+        lesson.answer(7, RIGHT, NOW.plusSeconds(100));
+        lesson.answer(8, RIGHT, NOW.plusSeconds(200));
 
         assertThat(lesson.getMasteredAt()).isEqualTo(NOW.plusSeconds(200));
     }
@@ -251,8 +273,8 @@ class LessonAssignmentTest {
         LessonAssignment lesson = failedCheck();   // position 5 was right
         lesson.retry(drills(2));
 
-        lesson.answer(6, RIGHT, NOW);
-        lesson.answer(7, WRONG, NOW);
+        lesson.answer(7, RIGHT, NOW);
+        lesson.answer(8, WRONG, NOW);
 
         assertThat(lesson.isMastered()).isFalse();
         assertThat(lesson.isCheckFailed()).isTrue();
