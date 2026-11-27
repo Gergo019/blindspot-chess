@@ -110,15 +110,28 @@ public class LessonAssignment extends BaseEntity {
         return check.subList(Math.max(0, check.size() - Curriculum.CHECK_ITEMS), check.size());
     }
 
+    /** Both items of the current check solved first try. */
     private boolean checkPassed() {
+        return isCurrentCheckComplete() && currentCheck().stream().allMatch(LessonItem::isSolvedFirstTry);
+    }
+
+    /**
+     * The current check still has all its items. Checks are added whole, at consecutive positions, so after a
+     * re-analysis has deleted one check item the count is odd or the last two are not neighbours, and the
+     * remaining item does not combine with another check's. (One item deleted from each of two checks is not
+     * detected: that would need the check's number stored with the item.)
+     */
+    private boolean isCurrentCheckComplete() {
+        List<LessonItem> all = items.stream().filter(LessonItem::isCheck).toList();
         List<LessonItem> check = currentCheck();
-        return check.size() == Curriculum.CHECK_ITEMS && check.stream().allMatch(LessonItem::isSolvedFirstTry);
+        return all.size() % Curriculum.CHECK_ITEMS == 0 && check.size() == Curriculum.CHECK_ITEMS
+                && check.getLast().getPosition() - check.getFirst().getPosition() == Curriculum.CHECK_ITEMS - 1;
     }
 
     /** Every item of the current check is answered, at least one wrongly, and the lesson is not mastered. */
     public boolean isCheckFailed() {
         List<LessonItem> check = currentCheck();
-        return !isMastered() && !check.isEmpty() && check.stream().allMatch(LessonItem::isAnswered)
+        return !isMastered() && isCurrentCheckComplete() && check.stream().allMatch(LessonItem::isAnswered)
                 && !check.stream().allMatch(LessonItem::isSolvedFirstTry);
     }
 

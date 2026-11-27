@@ -186,6 +186,30 @@ class LessonModelIT {
     }
 
     @Test
+    void aCheckWithAnItemDeletedNeverCombinesWithAnotherCheck() {
+        answer(4, "f3e5", NOW);   // the first check fails
+        answer(5, "f3d4", NOW);
+        long[] retry = tx.execute(s -> {
+            ChessAccount account = accounts.findAll().get(0);
+            Game game = games.save(TestData.game(account, "g2"));
+            List<Drill> fresh = new ArrayList<>();
+            for (int ply = 1; ply <= 3; ply += 2) {
+                fresh.add(drills.save(Drill.fromFinding(user,
+                        findings.save(TestData.hangingPiece(evaluations.save(TestData.userBlunder(game, ply)))),
+                        TestData.forkJudgement(), NOW)));
+            }
+            lessons.findById(lessonId).orElseThrow().retry(fresh);
+            return new long[] { fresh.get(0).getId(), fresh.get(1).getId() };
+        });
+        jdbc.update("DELETE FROM drills WHERE id = ?", retry[1]);   // a re-analysis removes position 7
+
+        answer(6, "f3d4", NOW.plusSeconds(60));   // right, and position 5 was right too
+
+        assertThat(jdbc.queryForObject("SELECT mastered_at IS NULL FROM lesson_assignments WHERE id = ?",
+                Boolean.class, lessonId)).isTrue();
+    }
+
+    @Test
     void aUserHasEachLessonOnce() {
         assertThatThrownBy(() -> jdbc.update("INSERT INTO lesson_assignments (user_id, lesson_key, curriculum_version) "
                 + "VALUES (?, 'hanging-piece/1', ?)", user.getId(), Curriculum.VERSION))
