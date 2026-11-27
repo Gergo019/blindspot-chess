@@ -1,5 +1,6 @@
 package io.github.gergo019.blindspot.common.api;
 
+import java.net.URI;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
@@ -13,6 +14,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
@@ -26,6 +28,11 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * <p>Spring's {@link ResponseEntityExceptionHandler} already turns framework errors into problem
  * details (405 for a wrong method, 404 for an unknown path, 400 for a missing parameter); this class
  * only rewrites the details that would echo internals.
+ *
+ * <p>Every problem detail carries {@code instance}, the request path ({@link #createResponseEntity}).
+ * Spring Framework set it by default up to 7.0, and 7.1 (Spring Boot 4.2) no longer does, because a plain
+ * request path is not the per-occurrence identifier RFC 9457 describes (spring-framework#35969). Our API
+ * keeps the path, so a client can tell which call failed (#85).
  */
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
@@ -42,7 +49,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                 ? "Invalid value for " + name + ". Allowed: " + Arrays.stream(type.getEnumConstants())
                         .map(Object::toString).collect(Collectors.joining(", "))
                 : "Invalid value for " + name + ".";
-        return problem(HttpStatus.BAD_REQUEST, "Bad request", detail);
+        return problem(ex, HttpStatus.BAD_REQUEST, "Bad request", detail, request);
     }
 
     /** Constraint violations on parameters, for example {@code size=500} or {@code page=-1}. */
@@ -55,20 +62,50 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                                 + error.getDefaultMessage()))
                 .sorted()
                 .collect(Collectors.joining("; "));
-        return problem(HttpStatus.BAD_REQUEST, "Bad request", detail.isEmpty() ? "Invalid parameters." : detail);
+        return problem(ex, HttpStatus.BAD_REQUEST, "Bad request",
+                detail.isEmpty() ? "Invalid parameters." : detail, request);
     }
 
     /** Anything unexpected: logged in full, answered without any detail. */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Object> handleUnexpected(Exception ex) {
+    public ResponseEntity<Object> handleUnexpected(Exception ex, WebRequest request) {
         log.error("Unexpected error in the API", ex);
-        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error",
-                "The request could not be processed.");
+        return problem(ex, HttpStatus.INTERNAL_SERVER_ERROR, "Internal error",
+                "The request could not be processed.", request);
     }
 
-    private static ResponseEntity<Object> problem(HttpStatus status, String title, String detail) {
+    /**
+     * The one place every response of this handler passes through: Spring's own problem details (via
+     * {@link #handleExceptionInternal}) and ours (via {@link #problem}). Sets {@code instance} to the
+     * request path when nothing set it.
+     */
+    @Override
+    protected ResponseEntity<Object> createResponseEntity(Object body, HttpHeaders headers, HttpStatusCode statusCode,
+            WebRequest request) {
+        if (body instanceof ProblemDetail problem && problem.getInstance() == null
+                && request instanceof ServletWebRequest servletRequest) {
+            problem.setInstance(requestPath(servletRequest.getRequest().getRequestURI()));
+        }
+        return super.createResponseEntity(body, headers, statusCode, request);
+    }
+
+    /**
+     * The request path as a URI reference, or null if the raw path is not a valid URI (the container
+     * rejects most such paths before they reach here). Never fails: an error handler must not throw.
+     */
+    static URI requestPath(String requestUri) {
+        try {
+            return requestUri == null ? null : URI.create(requestUri);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** A problem detail of our own, through the same path as Spring's ({@link #createResponseEntity}). */
+    private ResponseEntity<Object> problem(Exception ex, HttpStatus status, String title, String detail,
+            WebRequest request) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setTitle(title);
-        return ResponseEntity.status(status).body(problem);
+        return handleExceptionInternal(ex, problem, new HttpHeaders(), status, request);
     }
 }
