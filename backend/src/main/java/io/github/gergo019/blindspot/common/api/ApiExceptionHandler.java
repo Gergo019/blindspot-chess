@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.ServletWebRequest;
@@ -64,6 +65,23 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                 .collect(Collectors.joining("; "));
         return problem(ex, HttpStatus.BAD_REQUEST, "Bad request",
                 detail.isEmpty() ? "Invalid parameters." : detail, request);
+    }
+
+    /**
+     * A POST with another Content-Type than the one the endpoint accepts, for example a cross-site form
+     * ({@code application/x-www-form-urlencoded}) or {@code text/plain} (#90). Spring's own detail repeats
+     * the request's Content-Type; this one names only what is accepted. The {@code Accept} header Spring
+     * adds stays.
+     */
+    @Override
+    protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex,
+            HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        String accepted = ex.getSupportedMediaTypes().stream().map(Object::toString).sorted()
+                .collect(Collectors.joining(", "));
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status,
+                accepted.isEmpty() ? "This Content-Type is not accepted." : "Content-Type must be " + accepted + ".");
+        problem.setTitle("Unsupported media type");
+        return handleExceptionInternal(ex, problem, headers, status, request);
     }
 
     /** Anything unexpected: logged in full, answered without any detail. */

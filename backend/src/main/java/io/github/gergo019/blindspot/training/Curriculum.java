@@ -56,6 +56,11 @@ public final class Curriculum {
             return motif;
         }
 
+        /** The unit's part of its lessons' keys and URLs, such as {@code hanging-piece}. */
+        public String key() {
+            return keyPrefix;
+        }
+
         public String title() {
             return title;
         }
@@ -86,5 +91,18 @@ public final class Curriculum {
 
     public static Optional<Lesson> lesson(String key) {
         return LESSONS.stream().filter(l -> l.key().equals(key)).findFirst();
+    }
+
+    /**
+     * A lesson by its two parts, as they come from a URL ({@code hanging-piece}, {@code 1}): empty unless the
+     * unit is one of the curriculum's and the number a positive integer of one of its lessons. Checked part
+     * by part before any lookup, so nothing from the request is used beyond comparing it (#90).
+     */
+    public static Optional<Lesson> lesson(String unitKey, String number) {
+        if (unitKey == null || number == null || !number.matches("[1-9][0-9]{0,2}")) {
+            return Optional.empty();
+        }
+        int n = Integer.parseInt(number);
+        return LESSONS.stream().filter(l -> l.unit().key().equals(unitKey) && l.number() == n).findFirst();
     }
 }

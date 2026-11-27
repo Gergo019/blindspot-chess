@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- The learning journey's backend, slice 1 (Hanging Pieces, ADR 0008 and its amendments):
+  - **Lesson model** (#88, migrations `V6` and `V7`): lesson assignments, lesson items (a drill in one lesson only), and lesson attempts on `drill_attempts`, with one attempt per check puzzle held by the database. The curriculum is in code (`journey-1`, lessons `hanging-piece/1` to `/5`).
+  - **Lesson service** (#89): starting a lesson or a retry of its check, answers through the stored verdicts and SM-2, and derived states. A check puzzle deleted by a re-analysis voids its check. Cucumber features in `lesson_mastery.feature`.
+  - **Endpoints** (#90), the first that change data (there is no sign-in yet, #60):
+    - `GET /api/journey`;
+    - `GET` and `POST /api/lessons/{unit}/{number}`;
+    - `POST /api/lessons/{unit}/{number}/items/{position}/answer`.
+
+    The POSTs take only `application/json`. A second check answer is 409, an illegal move 400, an unknown lesson a fixed 404.
+
 - Drills with stored per-move verdicts (#36, ADR 0008):
   - **Migration `V5`:** `drill_move_verdicts` (one row per legal move, from `POST /judge`), the verdicts' engine settings and threshold on `drills`, `drills.task` with one drill per finding and task, and `drill_preparations`.
   - **Answers:** `Drill.answer` looks the move up. Any move losing less than 0.1 is correct; a move without a verdict is refused as illegal, with no attempt recorded and the schedule unchanged. SM-2 scheduling is unchanged.

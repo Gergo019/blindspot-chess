@@ -14,9 +14,12 @@ public class NotFoundException extends ErrorResponseException {
         super(HttpStatus.NOT_FOUND, problem("No " + what + " with id " + id), null);
     }
 
-    /** For resources with a key rather than an id, such as a lesson ({@code hanging-piece/1}). */
-    public NotFoundException(String what, String key) {
-        super(HttpStatus.NOT_FOUND, problem("No " + what + " " + key), null);
+    /**
+     * With a fixed detail that names nothing from the request, such as "No such lesson" (#90: a lesson's
+     * key comes from the URL, and the URL is not echoed into errors).
+     */
+    public NotFoundException(String detail) {
+        super(HttpStatus.NOT_FOUND, problem(detail), null);
     }
 
     private static ProblemDetail problem(String detail) {

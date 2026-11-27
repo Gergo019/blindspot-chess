@@ -31,6 +31,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import io.github.gergo019.blindspot.ApiProblems;
 import io.github.gergo019.blindspot.TestData;
 import io.github.gergo019.blindspot.account.ChessAccount;
 import io.github.gergo019.blindspot.account.ChessAccountRepository;
@@ -158,26 +159,9 @@ class ReadApiIT {
         throw new AssertionError("No " + motif + " in " + report);
     }
 
-    /**
-     * A problem detail without any internals (no stack trace, exception class or exception message) and
-     * with {@code instance} set to the request path. Spring Framework 7.1 no longer sets {@code instance}
-     * itself, so every error here checks it: Spring's own (404 unknown path, 405 wrong method, 400
-     * conversion) and ours (400 validation, 404 not found, 500) (#85).
-     */
+    /** A problem detail with {@code instance} and without internals ({@link ApiProblems#assertProblem}). */
     private JsonNode problem(HttpResponse<String> response, int status) {
-        assertThat(response.statusCode()).as(response.body()).isEqualTo(status);
-        assertThat(response.headers().firstValue("Content-Type")).hasValueSatisfying(
-                type -> assertThat(type).startsWith("application/problem+json"));
-        JsonNode body = json.readTree(response.body());
-        assertThat(body.get("status").asInt()).isEqualTo(status);
-        assertThat(body.has("title")).isTrue();
-        assertThat(body.has("instance")).as("instance in " + response.body()).isTrue();
-        assertThat(body.get("instance").asString()).isEqualTo(response.request().uri().getRawPath());
-        assertThat(body.has("trace")).isFalse();
-        assertThat(body.has("exception")).isFalse();
-        assertThat(body.has("message")).isFalse();
-        assertThat(response.body()).doesNotContain("Exception", "at io.github", "at org.");
-        return body;
+        return ApiProblems.assertProblem(json, response, status);
     }
 
     // ---- GET /api/patterns ----
@@ -538,13 +522,27 @@ class ReadApiIT {
             assertThat(body.get("instance").asString()).isEqualTo("/api/proxy-check");
         }
 
+        /**
+         * The read endpoints stay GET only, and the only writes are the journey's two POSTs (#90), both
+         * JSON only. The list of paths is exact, so a new endpoint, read or write, has to be added here
+         * on purpose.
+         */
         @Test
-        void openApiDescribesTheReadEndpointsOnly() throws Exception {
-            JsonNode docs = get("/api/docs");
-            JsonNode paths = docs.get("paths");
-            assertThat(paths.propertyNames()).contains("/api/findings", "/api/findings/{id}", "/api/patterns",
-                    "/api/games/{id}/moves");
-            paths.forEach(operations -> assertThat(operations.propertyNames()).containsOnly("get"));
+        void openApiDescribesTheReadEndpointsAsReadOnlyAndOnlyTheJourneyWrites() throws Exception {
+            String lesson = "/api/lessons/{unit}/{number}";
+            String answer = "/api/lessons/{unit}/{number}/items/{position}/answer";
+            List<String> reads = List.of("/api/findings", "/api/findings/{id}", "/api/patterns",
+                    "/api/games/{id}/moves", "/api/journey");
+            JsonNode paths = get("/api/docs").get("paths");
+
+            List<String> all = new ArrayList<>(reads);
+            all.addAll(List.of(lesson, answer));
+            assertThat(paths.propertyNames()).containsExactlyInAnyOrderElementsOf(all);
+            reads.forEach(path -> assertThat(paths.get(path).propertyNames()).as(path).containsOnly("get"));
+            assertThat(paths.get(lesson).propertyNames()).as(lesson).containsExactlyInAnyOrder("get", "post");
+            assertThat(paths.get(answer).propertyNames()).as(answer).containsOnly("post");
+            assertThat(paths.get(answer).get("post").get("requestBody").get("content").propertyNames())
+                    .containsOnly("application/json");
         }
     }
 }

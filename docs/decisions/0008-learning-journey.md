@@ -1,7 +1,7 @@
 # 0008: Learning journey, slice 1 (Hanging Pieces)
 
 - Status: accepted
-- Date: 2026-11-21 (#77), amended 2026-11-27 (the mastery retry rule, open question (a); see the [amendment](#amendment-2026-11-27-a-retry-needs-unused-positions)), and again on 2026-11-27 (lesson positions, the check, and re-analysis, #89; see the [second amendment](#amendment-2026-11-27-89-lesson-positions-the-check-and-re-analysis))
+- Date: 2026-11-21 (#77), amended 2026-11-27 (the mastery retry rule, open question (a); see the [amendment](#amendment-2026-11-27-a-retry-needs-unused-positions)), and again on 2026-11-27 (lesson positions, the check, and re-analysis, #89; see the [second amendment](#amendment-2026-11-27-89-lesson-positions-the-check-and-re-analysis)), and a third time on 2026-11-27 (lesson URLs and error answers, #90; see the [third amendment](#amendment-2026-11-27-90-lesson-urls-and-error-answers))
 - Design and decisions: [#74](https://github.com/Gergo019/blindspot-chess/issues/74) (proposal and answers in its comments)
 
 ## Context
@@ -77,9 +77,9 @@ The tables, in a migration after #36's (numbers assigned when they land):
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/journey` | the map: the unit with its lessons (key, number, title, state, recommended, solved first try, size, positions still needed, retry available) and the motif's line from the blind-spot report ("in 5 of your last 20 rapid games") |
-| `POST /api/lessons/{key}` | starts the lesson: assigns it if it can be filled (idempotent), returns it. On a lesson whose check failed, it starts the retry: it adds a new pair of check items if 2 unused positions exist. If not, it changes nothing and returns the lesson as it is (200, `retryAvailable: false`, the positions still needed); that is a fact about the data, not an error |
-| `GET /api/lessons/{key}` | the explanation and the items in order (position, role, task, FEN, orientation, prompt, answered, correct). The game and the solution only for answered items; the result is part of the same response, including `retryAvailable` and the positions a retry still needs |
-| `POST /api/lessons/{key}/items/{position}/answer` | `{moveUci}` → correct, first try, the move's verdict and refutation, the engine's move, the accepted moves, the game's move and evidence line, the lesson state |
+| `POST /api/lessons/{unit}/{number}` (was `{key}`, see the [third amendment](#amendment-2026-11-27-90-lesson-urls-and-error-answers)) | starts the lesson: assigns it if it can be filled (idempotent), returns it. On a lesson whose check failed, it starts the retry: it adds a new pair of check items if 2 unused positions exist. If not, it changes nothing and returns the lesson as it is (200, `retryAvailable: false`, the positions still needed); that is a fact about the data, not an error |
+| `GET /api/lessons/{unit}/{number}` | the explanation and the items in order (position, role, task, FEN, orientation, prompt, answered, correct). The game and the solution only for answered items; the result is part of the same response, including `retryAvailable` and the positions a retry still needs |
+| `POST /api/lessons/{unit}/{number}/items/{position}/answer` | `{moveUci}` → correct, first try, the move's verdict and refutation, the engine's move, the accepted moves, the game's move and evidence line, the lesson state |
 
 These are the first endpoints that change data, and there is no sign-in yet ([#60](https://github.com/Gergo019/blindspot-chess/issues/60)). The POSTs accept only `Content-Type: application/json`, so a cross-site form cannot reach them (a cross-origin JSON request needs a CORS preflight, which the backend does not allow), with a test. Queries take the user id from `CurrentPlayer`, like the read API.
 
@@ -180,3 +180,33 @@ Mastery in slice 1 is measured on the user's **own positions**. The user may hav
 **Consequences:**
 - **Positions in a lesson can have gaps:** from retries, and from items a re-analysis deleted. A position names an item; it is not a count. The lesson API (#90) shows the items in position order.
 - **A re-analysis that deletes practice items does not refill the lesson.** A lesson that has been assigned does not change, so it may have fewer than 3 practice items afterwards.
+
+## Amendment 2026-11-27 (#90): lesson URLs and error answers
+
+**Context:** the API table above names lessons by `{key}`. A key has a slash (`hanging-piece/1`), which one path variable cannot hold. The endpoints (#90) also had to settle the status codes for the lesson rules, and the two races the lesson service (#89) left as plain 500s. Decided by Gergo.
+
+**Decision:**
+- **A lesson's URL has two segments:** `/api/lessons/{unit}/{number}`, with the answer at `/api/lessons/{unit}/{number}/items/{position}/answer` (for example `/api/lessons/hanging-piece/1`). The unit and the number are checked first (a unit of the curriculum, a positive integer). An unknown lesson is a fixed 404 "No such lesson", with nothing from the URL in the text.
+- **Items are a list with their positions**, never 1 to n: positions can have gaps (second amendment).
+- **Status codes, all as problem details with `instance`:**
+
+  | Case | Answer |
+  |---|---|
+  | a second answer to a check puzzle | 409 |
+  | a move that is not legal in the position | 400 |
+  | an unknown lesson; an answer to a lesson that is not started or to a position it does not have | 404 |
+  | a POST that is not `application/json` (a form, `text/plain`, no Content-Type), also the start without a body | 415 |
+
+- **The two races:**
+  - **An answer while a re-analysis deletes its item** is a 409 ("the lesson changed"), with nothing recorded.
+  - **Two first starts of the same lesson at once:** the second one fails on a unique constraint, changes nothing, and returns the lesson the first one stored (200). The same holds for two retries at once.
+
+**Why:**
+- **Two segments** keep the URL readable and the lesson's parts separate. An encoded slash (`%2F`) is refused by the servlet container by default. A query parameter would make a lesson a filter rather than a resource.
+- **No echo:** an error that repeats the URL invites reflected content, and errors carry no internals (#51, #60).
+- **The races are facts about timing, not errors of the client:** a start is idempotent, so a lost race is the same as a repeated start. An answer whose item vanished is a conflict with the current state, like a second check answer.
+
+**Consequences:**
+- The lesson's `key` stays the stored identifier (`lesson_assignments.lesson_key`), and the API gives `unit` and `number` with every lesson so clients build the URL without parsing the key.
+- `instance` is the request path on every error, as since #86, so it does contain the URL. The rule applies to `title` and `detail`.
+- There is still no sign-in (#60): these are the first endpoints that change data, and #60 matters before any hosted demo.
