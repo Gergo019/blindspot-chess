@@ -1,9 +1,10 @@
 package io.github.gergo019.blindspot.analysis;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Records mirroring the analysis service's {@code POST /analyze} JSON
+ * Records mirroring the analysis service's {@code POST /analyze} and {@code POST /judge} JSON
  * (see analysis-service/README.md). Field names match the JSON keys.
  */
 public final class AnalyzeApi {
@@ -46,5 +47,30 @@ public final class AnalyzeApi {
     /** The checked facts of a HANGING_PIECE finding (detector hanging-0.2). */
     public record FindingFacts(String piece, String square, String capturedBy, int materialLost,
             String movedPiece, String movedFrom, String movedTo) {
+    }
+
+    /** {@code POST /judge} (#78): a drill position; the side to move is judged. */
+    public record JudgeRequest(String fen) {
+    }
+
+    /**
+     * Every legal move of the position with its verdict, best first. {@code fen} is the position as the
+     * service parsed it (normalised); {@code acceptBelow} is the drop threshold the verdicts were judged
+     * against.
+     */
+    public record JudgeResponse(EngineInfo engine, String fen, String sideToMove, BigDecimal acceptBelow,
+            List<VerdictDto> verdicts) {
+        public JudgeResponse {
+            verdicts = verdicts == null ? List.of() : List.copyOf(verdicts);
+        }
+    }
+
+    /**
+     * One legal move: the score after it (White's point of view), the drop in the mover's winning chances
+     * against the best move, whether it is accepted, and the engine's line after it (space-separated UCI,
+     * empty when the move ends the game).
+     */
+    public record VerdictDto(String uci, String san, ScoreDto score, BigDecimal drop, boolean accepted,
+            String refutationUci) {
     }
 }

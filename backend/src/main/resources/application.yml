@@ -23,9 +23,9 @@ spring:
   task:
     scheduling:
       pool:
-        # The Lichess import and the analysis job each get a thread, so a long
-        # analysis run does not hold up an import.
-        size: 2
+        # The Lichess import, the analysis job and the drill preparation (#36) each
+        # get a thread, so a long analysis run does not hold up the others.
+        size: 3
 
 server:
   port: 8080
@@ -59,6 +59,16 @@ blindspot:
       interval: ${ANALYSIS_INTERVAL:30s}
       # RUNNING longer than this counts as stuck (crash or restart); must exceed the read timeout.
       stuck-after: ${ANALYSIS_STUCK_AFTER:30m}
+  training:
+    # Prepares "Find a safe move" drills from findings (#36): one POST /judge per finding, which
+    # takes 2 to 11 s for the demo positions, at most the analysis service's JUDGE_BUDGET_SECONDS
+    # (60 s) by design. The read timeout above (180 s) is longer than that budget.
+    drill-preparation:
+      enabled: ${DRILL_PREPARATION_ENABLED:true}
+      batch-size: ${DRILL_PREPARATION_BATCH_SIZE:5}
+      interval: ${DRILL_PREPARATION_INTERVAL:60s}
+      # After a time budget exceeded, a timeout or an unreadable response, wait this long before retrying.
+      retry-after: ${DRILL_PREPARATION_RETRY_AFTER:1h}
   lichess:
     base-url: ${LICHESS_BASE_URL:https://lichess.org}
     api-token: ${LICHESS_API_TOKEN:}

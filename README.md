@@ -162,7 +162,7 @@ On Linux, use `--network host -e E2E_BASE_URL=http://localhost:8081` instead of 
 
 ### Product rules as features
 
-The business rules are written as Cucumber features in plain product language in [`backend/src/test/resources/features/`](backend/src/test/resources/features): when a repeated mistake counts as a pattern (3 distinct games among the last 20 analysed rapid games, once per game, the sample size always reported), that only verified template explanations are shown, and that kinds of mistake without a detector are not reported. The steps seed data through the repositories and check everything through the real HTTP API against PostgreSQL (Testcontainers). They run with the other integration tests: `cd backend && mvn verify` (or only them: `mvn verify -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=BusinessRulesIT`).
+The business rules are written as Cucumber features in plain product language in [`backend/src/test/resources/features/`](backend/src/test/resources/features): when a repeated mistake counts as a pattern (3 distinct games among the last 20 analysed rapid games, once per game, the sample size always reported), that only verified template explanations are shown, that kinds of mistake without a detector are not reported, and that a drill accepts every move losing less than 0.1 and refuses illegal ones (through the training service until the drill API exists). The steps seed data through the repositories and check everything through the real HTTP API against PostgreSQL (Testcontainers). They run with the other integration tests: `cd backend && mvn verify` (or only them: `mvn verify -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=BusinessRulesIT`).
 
 ### Read API
 
@@ -188,11 +188,18 @@ curl -s "localhost:8081/api/findings?motif=HANGING_PIECE&size=5"
 
 ```
 users ──< chess_accounts ──< games ──< move_evaluations ──< mistake_findings ──< explanations
-  │                                                              │
-  └───────────────────────────< drills >─────────────────────────┘
+  │                                                              │  │
+  └───────────────────────────< drills >─────────────────────────┘  └──< drill_preparations
                                   │      (OWN_GAME from a finding, or TRANSFER from a puzzle)
+                                  ├──< drill_move_verdicts   (one per legal move, from POST /judge)
                                   └──< drill_attempts
 ```
+
+**Drills** (#36, [ADR 0008](docs/decisions/0008-learning-journey.md)):
+- **Preparation:** a background job turns each finding into a "Find a safe move" drill. It asks the analysis service to judge every legal move of the position before the mistake (`POST /judge`), and stores the drill together with all its verdicts, or nothing.
+- **Answers:** an answer is checked by looking the move up in those verdicts. It is correct when it loses less than 0.1 of the winning chances. A move without a verdict is not legal and is refused, with nothing recorded. Reviews follow SM-2.
+- **Failures:** a position whose judging exceeded the service's time budget, timed out or could not be stored is retried after `DRILL_PREPARATION_RETRY_AFTER` (`drill_preparations`). One the service rejects, or whose verdicts accept the game's mistake, is skipped for good.
+- There is no drill API or screen yet; they come with the learning journey.
 
 ## Roadmap
 
@@ -202,7 +209,7 @@ users ──< chess_accounts ──< games ──< move_evaluations ──< mist
 
 - [x] **Phase 1, pipeline** (v0.1.0): background import of recent completed Lichess rapid games (bounded, deduplicated by game id) ✓, `POST /analyze` with pinned Stockfish ✓, background analysis of imported games ✓, seeded demo data from the open database ✓. **Done when** CI sends one known finished game through backend → analysis service → Stockfish and asserts the expected motif comes back with a replayable line.
 - [ ] **Phase 2, findings**: detectors for the two motifs with evidence lines, the pattern report and its evidence threshold
-- [ ] **Phase 3, practice**: board-first React screen ✓ (v0.2.0), Playwright tests ✓ (v0.2.0), own-game and transfer drills inside a learning journey of motif units ([#74](https://github.com/Gergo019/blindspot-chess/issues/74), [ADR 0008](docs/decisions/0008-learning-journey.md)). Slice 1, Hanging Pieces: ADR 0008 ([#77](https://github.com/Gergo019/blindspot-chess/issues/77)) ✓ → per-move verdicts in the analysis service ([#78](https://github.com/Gergo019/blindspot-chess/issues/78)) → drills with accepted moves and verdicts ([#36](https://github.com/Gergo019/blindspot-chess/issues/36)) → the journey's backend, board and screens
+- [ ] **Phase 3, practice**: board-first React screen ✓ (v0.2.0), Playwright tests ✓ (v0.2.0), own-game and transfer drills inside a learning journey of motif units ([#74](https://github.com/Gergo019/blindspot-chess/issues/74), [ADR 0008](docs/decisions/0008-learning-journey.md)). Slice 1, Hanging Pieces: ADR 0008 ([#77](https://github.com/Gergo019/blindspot-chess/issues/77)) ✓ → per-move verdicts in the analysis service ([#78](https://github.com/Gergo019/blindspot-chess/issues/78)) ✓ → drills with accepted moves and verdicts ([#36](https://github.com/Gergo019/blindspot-chess/issues/36)) ✓ → the journey's backend, board and screens
 - [ ] **Phase 4, explanations**: typed claims and templates, then the `LLM_FREE` / `LLM_FACTS` experiment and its evaluation report
 - [ ] **Phase 5, operations**: Cucumber acceptance suite (product-rule features ✓ in v0.2.0), Kubernetes manifests, hosted demo
 

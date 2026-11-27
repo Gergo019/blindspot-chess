@@ -11,5 +11,7 @@ public interface DrillRepository extends JpaRepository<Drill, Long> {
 
     boolean existsByUserIdAndFindingId(Long userId, Long findingId);
 
+    boolean existsByFindingIdAndTask(Long findingId, Drill.Task task);
+
     boolean existsByUserIdAndPuzzleId(Long userId, String puzzleId);
 }

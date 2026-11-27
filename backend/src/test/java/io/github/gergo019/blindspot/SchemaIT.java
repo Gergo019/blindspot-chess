@@ -42,7 +42,8 @@ import io.github.gergo019.blindspot.training.DrillRepository;
  * itself proves that the Flyway migration runs and that Hibernate's schema
  * validation accepts every entity mapping.
  */
-@SpringBootTest(properties = { "blindspot.lichess.importer.enabled=false", "blindspot.analysis.job.enabled=false" })
+@SpringBootTest(properties = { "blindspot.lichess.importer.enabled=false", "blindspot.analysis.job.enabled=false",
+        "blindspot.training.drill-preparation.enabled=false" })
 @Testcontainers
 @Transactional
 class SchemaIT {
@@ -99,8 +100,8 @@ class SchemaIT {
         explanations.save(template);
 
         Instant now = Instant.parse("2026-11-12T10:00:00Z");
-        Drill own = drills.save(Drill.fromFinding(user, finding, now));
-        drills.save(Drill.transferPuzzle(user, Motif.HANGING_PIECE, "00sHx", 1450, TestData.FORK_FEN, "f3d4", now));
+        Drill own = drills.save(Drill.fromFinding(user, finding, TestData.forkJudgement(), now));
+        drills.save(Drill.transferPuzzle(user, Motif.HANGING_PIECE, "00sHx", 1450, TestData.forkJudgement(), now));
         attempts.save(own.answer("f3d4", now));
         drills.flush();
 
@@ -186,6 +187,71 @@ class SchemaIT {
         MoveEvaluation.EngineRun run = evaluations.findById(stored.getId()).orElseThrow().getEngineRun();
         assertThat(run.isComplete()).isFalse();
         assertThat(run.version()).isEqualTo(TestData.ENGINE.version());
+    }
+
+    @Test
+    void aDrillKeepsEveryVerdictAndHowItWasProduced() {
+        MistakeFinding finding = savedFinding("verdicts");
+        User user = finding.getMoveEvaluation().getGame().getAccount().getUser();
+        Drill saved = drills.saveAndFlush(Drill.fromFinding(user, finding, TestData.forkJudgement(),
+                Instant.parse("2026-11-21T10:00:00Z")));
+        entityManager.clear();
+
+        Drill reloaded = drills.findById(saved.getId()).orElseThrow();
+        assertThat(reloaded.getTask()).isEqualTo(Drill.Task.FIND_SAFE_MOVE);
+        assertThat(reloaded.getVerdicts()).containsOnlyKeys("f3d4", "b1c3", "d2d3", "f3e5");
+        assertThat(reloaded.acceptedMoves()).containsExactly("b1c3", "f3d4");
+        assertThat(reloaded.verdictFor("f3e5").drop()).isEqualByComparingTo("0.6");
+        assertThat(reloaded.verdictFor("f3e5").refutationUci()).isEqualTo("d8g5 e5f7 g5g2");
+        assertThat(reloaded.verdictFor("f3e5").scoreCp()).isEqualTo(-210);
+        assertThat(reloaded.getVerdictEngine()).isEqualTo(TestData.forkJudgement().engine());
+        assertThat(reloaded.getAcceptBelow()).isEqualByComparingTo("0.1");
+        assertThat(reloaded.answer("b1c3", Instant.parse("2026-11-21T10:05:00Z")).isCorrect()).isTrue();
+    }
+
+    @Test
+    void aFindingHasOneDrillPerTask() {
+        MistakeFinding finding = savedFinding("twice");
+        User user = finding.getMoveEvaluation().getGame().getAccount().getUser();
+        Instant now = Instant.parse("2026-11-21T10:00:00Z");
+        drills.saveAndFlush(Drill.fromFinding(user, finding, TestData.forkJudgement(), now));
+
+        assertThatThrownBy(() -> drills.saveAndFlush(Drill.fromFinding(user, finding, TestData.forkJudgement(), now)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void aVerdictHasExactlyOneScore() {
+        MistakeFinding finding = savedFinding("score");
+        User user = finding.getMoveEvaluation().getGame().getAccount().getUser();
+        Drill drill = drills.saveAndFlush(Drill.fromFinding(user, finding, TestData.forkJudgement(),
+                Instant.parse("2026-11-21T10:00:00Z")));
+
+        assertThatThrownBy(() -> jdbc.update(
+                "UPDATE drill_move_verdicts SET score_mate = 3 WHERE drill_id = ? AND move_uci = 'f3d4'",
+                drill.getId())).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void aPendingPreparationNeedsARetryTime() {
+        MistakeFinding finding = savedFinding("pending");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO drill_preparations (finding_id, task, status, attempts, "
+                + "next_attempt_at, last_error) VALUES (?, 'FIND_SAFE_MOVE', 'PENDING', 1, NULL, 'x')",
+                finding.getId())).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void aSkippedPreparationHasNoRetryTime() {
+        MistakeFinding finding = savedFinding("skipped");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO drill_preparations (finding_id, task, status, attempts, "
+                + "next_attempt_at, last_error) VALUES (?, 'FIND_SAFE_MOVE', 'SKIPPED', 1, now(), 'x')",
+                finding.getId())).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private MistakeFinding savedFinding(String name) {
+        User user = users.save(TestData.user(name));
+        Game game = games.save(TestData.game(accounts.save(TestData.lichessAccount(user)), name));
+        return findings.saveAndFlush(TestData.hangingPiece(evaluations.save(TestData.userBlunder(game, 7))));
     }
 
     @Test

@@ -58,6 +58,7 @@ import com.sun.net.httpserver.HttpServer;
  * can be down, failing, slow, rejecting or working.
  */
 @SpringBootTest(properties = { "blindspot.lichess.importer.enabled=false", "blindspot.analysis.job.enabled=false",
+        "blindspot.training.drill-preparation.enabled=false",
         "blindspot.analysis-service-read-timeout=1s", "blindspot.analysis.job.interval=30s" })
 @Import(AnalysisFailureHandlingIT.TransactionProbe.class)
 @Testcontainers

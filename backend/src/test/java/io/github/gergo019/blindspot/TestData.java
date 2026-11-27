@@ -1,6 +1,8 @@
 package io.github.gergo019.blindspot;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 import io.github.gergo019.blindspot.account.ChessAccount;
 import io.github.gergo019.blindspot.account.ChessPlatform;
@@ -15,6 +17,7 @@ import io.github.gergo019.blindspot.game.Game;
 import io.github.gergo019.blindspot.game.GameEnums.GameResult;
 import io.github.gergo019.blindspot.game.GameEnums.PieceColor;
 import io.github.gergo019.blindspot.game.GameEnums.Speed;
+import io.github.gergo019.blindspot.training.Judgement;
 
 /**
  * Builders for test objects, so tests only spell out what they care about.
@@ -55,5 +58,20 @@ public final class TestData {
     /** A finding for persistence tests; the motif label is test data, not real detector output. */
     public static MistakeFinding hangingPiece(MoveEvaluation blunder) {
         return new MistakeFinding(blunder, Motif.HANGING_PIECE, "d8g5 e5f7 g5g2", "detector-0.1");
+    }
+
+    /**
+     * Verdicts for {@link #FORK_FEN} (a few of its legal moves, made up around the threshold): the engine's
+     * first choice Nxd4, a second safe move Nc3 just below the threshold, d3 exactly at it, and the game's
+     * mistake Nxe5 with its refutation.
+     */
+    public static Judgement forkJudgement() {
+        return new Judgement(new Judgement.EngineSettings("Stockfish 19", 16, 1, 64), FORK_FEN,
+                new BigDecimal("0.1"), List.of(
+                        new Judgement.Verdict("f3d4", "Nxd4", 40, null, new BigDecimal("0"), true, "c6d4 c2c3"),
+                        new Judgement.Verdict("b1c3", "Nc3", 12, null, new BigDecimal("0.0999"), true, "d4f3 d1f3"),
+                        new Judgement.Verdict("d2d3", "d3", 8, null, new BigDecimal("0.1"), false, "d4f3 d1f3"),
+                        new Judgement.Verdict("f3e5", "Nxe5", -210, null, new BigDecimal("0.6"), false,
+                                "d8g5 e5f7 g5g2")));
     }
 }
