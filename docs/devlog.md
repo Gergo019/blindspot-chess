@@ -4,6 +4,55 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-27: Problem details always carry "instance" (#85 / PR #86)
+
+**Goal:** Unblock Dependabot PR #82 (Spring Boot 4.1.2 → 4.2.0, springdoc 3.2.0 → 3.2.1). Its Backend check failed in `ReadApiIT.unknownApiPathsAre404ProblemDetails`: the 404 body for an unknown `/api/...` path had no `instance` field. Find the cause, and make every problem detail from the API carry `instance` again, on both versions, without loosening the "no internals" rule of #51 and #60.
+
+**What broke:** Under Boot 4.2.0 (Spring Framework 7.1.0), the problem detail for `GET /api/proxy-check` still had status 404, `application/problem+json`, `status` and `title`, and no internals, but no `instance`. Testing showed that **every** error response had lost it: 404, 405, 400 and 500. Only this one test asserted the field.
+
+**Root cause:**
+- **Removed in Spring Framework 7.1, on purpose.** Up to 7.0, `HttpEntityMethodProcessor` and `RequestResponseBodyMethodProcessor` set an empty `instance` to `request.getRequestURI()`. In 7.1.0 that block is gone; I compared the 7.0.10 and 7.1.0 source jars. The change is spring-framework#35969 ("ProblemDetail instance field set from the current URL path, does not respect RFC", commit ac65288), listed under "Attention Required" in the 7.1.0-RC1 release notes.
+- **The reason** (Framework 7.1 release notes wiki): RFC 9457 defines `instance` as a URI identifying a specific occurrence of the problem, which a plain request path is not. Applications that want it set it themselves: in the handler, or with an `ErrorResponse.Interceptor`, which gets request access only from 7.1 (spring-framework#37410).
+- `ProblemDetail#setInstance`'s javadoc in 7.1.0 still describes the old default, and Spring Boot 4.2's release notes do not mention the change.
+- **The code path is the same on both versions** (web debug logging): `ResourceHttpRequestHandler` throws `NoResourceFoundException`, `ExceptionHandlerExceptionResolver` hands it to `ApiExceptionHandler` (via `ResponseEntityExceptionHandler`), and `HttpEntityMethodProcessor` writes the `ProblemDetail`. Only the last step stopped adding `instance`.
+
+**Changes:**
+- `ApiExceptionHandler`:
+  - overrides `createResponseEntity`, which `ResponseEntityExceptionHandler#handleExceptionInternal` calls for every framework error, and sets `instance` to the request path (without the query) when it is empty; an `instance` set elsewhere is kept;
+  - our own three handlers (type mismatch, method validation, unexpected 500) now return through `handleExceptionInternal` too, instead of building the `ResponseEntity` themselves;
+  - a raw path that is not a valid URI gives no `instance`, instead of an exception inside the error handler;
+  - the class javadoc explains why.
+- `ReadApiIT`: the shared `problem()` helper asserts that `instance` equals the request's raw path on every error. The failing assertion in `unknownApiPathsAre404ProblemDetails` is unchanged.
+- `ApiExceptionHandlerTest` (new, 5 tests, no server).
+- No dependency change: the version bump stays in #82.
+
+**Decisions:**
+- **Keep the path as `instance`**, as the API has always done and as the #51 / #60 tests established. It tells a client which call failed.
+  - Rejected: dropping `instance` (Spring's new default). It changes the API's error contract and would need the test weakened.
+  - Rejected: a generated per-occurrence id (a UUID). It is closer to the RFC, but it is only useful together with logging that id, and it is its own decision; recorded as an open point.
+- **One central place, `createResponseEntity`**, instead of patching single cases. It is the same hook on 7.0 and 7.1, and every response of the handler passes through it.
+  - Rejected: an `ErrorResponse.Interceptor`. Its request-aware variant exists only in 7.1, so on 4.1.2 it would need `RequestContextHolder`.
+  - Rejected: overriding `createProblemDetail`, Spring's interim tip in #35969. It is not called for problem details built elsewhere, such as ours or an `ErrorResponseException`'s own body.
+- **Our handlers now go through `handleExceptionInternal`.** On 7.1 that also records a 5xx on the HTTP server observation. It does not set the request's error attribute, because the body is not null. Neither changes the response.
+
+**Verification:**
+- **Reproduced:**
+  - `ReadApiIT` on `main` (Boot 4.1.2, Framework 7.0.10): 39 passed.
+  - With a temporary bump to Boot 4.2.0 and springdoc 3.2.1 (working tree only): 1 error, the NPE on `instance`, as on #82.
+- **With the fix:**
+  - temporary 4.2.0 bump: `ReadApiIT` 39 passed, `ApiExceptionHandlerTest` 5 passed;
+  - bump reverted (`pom.xml` identical to `main`): full `mvn verify` passed, 101 unit and 106 integration tests;
+  - all in the pinned Maven image, with Testcontainers.
+- **The tests can fail:** in a separate worktree, with 4.2.0 and the fix switched off, 19 of 39 `ReadApiIT` tests fail at the new `instance` assertion. That is the unknown path, 8 wrong methods (405), 7 bad parameters (400, conversion and validation), 2 not found (404) and the 500.
+- **CI on PR #86 (fffdc67), all green:** Backend 2m10s (101 + 106 tests, the same counts as locally), Analysis service 3m11s, Frontend 31 s, Docker Compose stack 1m13s, End-to-end 7m31s, and the CodeQL checks.
+
+**Open points / risks:**
+- **After merging:** comment `@dependabot rebase` on #82 and check that its Backend check turns green. #82 is eligible under the two-week rule from about 3 Dec (Boot 4.2.0 was published on 19 Nov).
+- **Whether `instance` should become a real per-occurrence id** (RFC 9457) instead of the path, together with logging that id. Not needed now; worth deciding with Spring Security (#60) or a hosted demo.
+- **Another case of the same footer:** issue #85's body ends with a "Generated by Claude Code" footer, against the no-attribution rule. It was left as it is, for Gergo to decide.
+
+**Links:** [#85](https://github.com/Gergo019/blindspot-chess/issues/85), [PR #86](https://github.com/Gergo019/blindspot-chess/pull/86), [#82](https://github.com/Gergo019/blindspot-chess/pull/82), [spring-framework#35969](https://github.com/spring-projects/spring-framework/issues/35969), [spring-framework#37410](https://github.com/spring-projects/spring-framework/issues/37410), [Spring Framework 7.1 release notes](https://github.com/spring-projects/spring-framework/wiki/Spring-Framework-7.1-Release-Notes)
+
 ## 2026-11-21: Drills with accepted moves and per-move verdicts (#36 / PR #81)
 
 **Goal:** A drill accepts every good-enough move, not only the engine's first choice (finding A10 of the 2026-11-14 review). Every legal move of its position has a stored verdict from `POST /judge` (#78), answers are checked by lookup, illegal moves are refused, and a background job prepares drills from findings. Part b of #36, for the learning journey (ADR 0008).
