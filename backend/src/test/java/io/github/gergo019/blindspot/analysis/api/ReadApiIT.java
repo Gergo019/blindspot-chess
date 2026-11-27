@@ -158,7 +158,12 @@ class ReadApiIT {
         throw new AssertionError("No " + motif + " in " + report);
     }
 
-    /** A problem detail without any internals: no stack trace, exception class or exception message. */
+    /**
+     * A problem detail without any internals (no stack trace, exception class or exception message) and
+     * with {@code instance} set to the request path. Spring Framework 7.1 no longer sets {@code instance}
+     * itself, so every error here checks it: Spring's own (404 unknown path, 405 wrong method, 400
+     * conversion) and ours (400 validation, 404 not found, 500) (#85).
+     */
     private JsonNode problem(HttpResponse<String> response, int status) {
         assertThat(response.statusCode()).as(response.body()).isEqualTo(status);
         assertThat(response.headers().firstValue("Content-Type")).hasValueSatisfying(
@@ -166,6 +171,8 @@ class ReadApiIT {
         JsonNode body = json.readTree(response.body());
         assertThat(body.get("status").asInt()).isEqualTo(status);
         assertThat(body.has("title")).isTrue();
+        assertThat(body.has("instance")).as("instance in " + response.body()).isTrue();
+        assertThat(body.get("instance").asString()).isEqualTo(response.request().uri().getRawPath());
         assertThat(body.has("trace")).isFalse();
         assertThat(body.has("exception")).isFalse();
         assertThat(body.has("message")).isFalse();
