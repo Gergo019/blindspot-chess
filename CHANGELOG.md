@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Frontend: `PuzzleBoard` (#94), the interactive board for lesson puzzles (ADR 0007, amendment of 2026-11-21). It has the look of `EvidenceBoard`, and the player moves by dragging, by clicking the piece and then the target square, or by typing SAN or UCI. A promotion offers a labelled choice. chess.js refuses illegal moves at once, and correctness is left to the server. Each result is announced, and after the answer the game's move and the evidence line are shown as on the findings screen. There is no screen yet.
 - The learning journey's backend, slice 1 (Hanging Pieces, ADR 0008 and its amendments):
   - **Lesson model** (#88, migrations `V6` and `V7`): lesson assignments, lesson items (a drill in one lesson only), and lesson attempts on `drill_attempts`, with one attempt per check puzzle held by the database. The curriculum is in code (`journey-1`, lessons `hanging-piece/1` to `/5`).
   - **Lesson service** (#89): starting a lesson or a retry of its check, answers through the stored verdicts and SM-2, and derived states. A check puzzle deleted by a re-analysis voids its check. Cucumber features in `lesson_mastery.feature`.

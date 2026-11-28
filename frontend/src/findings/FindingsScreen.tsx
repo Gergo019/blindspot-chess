@@ -7,7 +7,8 @@ import { EvidenceBoard } from "../components/EvidenceBoard";
 import { Legend } from "../components/Legend";
 import { findingPath } from "../router";
 import { BlindSpotCard } from "./BlindSpotCard";
-import { buildView, type Cursor } from "./boardView";
+import { buildView, type Cursor, nextStep } from "./boardView";
+import { useStepKeys } from "./useStepKeys";
 import { FindingFooter } from "./FindingFooter";
 import { FindingList } from "./FindingList";
 import { FindingPanel } from "./FindingPanel";
@@ -81,35 +82,14 @@ export function FindingsScreen({ findingId, navigate }: Props) {
   const step = useCallback(
     (key: string) => {
       setCursor((c) => {
-        if (c.mode === "game") {
-          const last = gamePlies.length;
-          const ply = key === "Home" ? 0 : key === "End" ? last : c.ply + (key === "ArrowRight" ? 1 : -1);
-          return { mode: "game", ply: Math.max(0, Math.min(last, ply)) };
-        }
-        const from = c.mode === "best" ? 0 : c.step;
-        const last = line.length;
-        const next = key === "Home" ? 0 : key === "End" ? last : from + (key === "ArrowRight" ? 1 : -1);
-        return { mode: "line", step: Math.max(0, Math.min(last, next)) };
+        if (c.mode === "game") return { mode: "game", ply: nextStep(c.ply, key, gamePlies.length) };
+        return { mode: "line", step: nextStep(c.mode === "best" ? 0 : c.step, key, line.length) };
       });
     },
     [gamePlies.length, line.length, setCursor],
   );
 
-  useEffect(() => {
-    if (!current) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
-      event.preventDefault();
-      step(event.key);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [current, step]);
+  useStepKeys(current !== null, step);
 
   const view = current
     ? buildView(current, line, gamePlies, gameMoves, cursor)
