@@ -14,6 +14,7 @@ vi.mock("react-chessboard", () => ({
     board.options = options;
     return null;
   },
+  defaultPieces: {},
 }));
 
 const FORK = "r1bqkbnr/pppp1ppp/8/4p3/2BnP3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";

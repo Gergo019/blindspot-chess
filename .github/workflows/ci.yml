@@ -145,7 +145,7 @@ jobs:
             for i in $(seq 1 60); do curl -fsS "$url" && echo && break; sleep 2; done
             curl -fsS "$url" > /dev/null
           done
-      - name: Wait until all 20 demo games are analysed
+      - name: Wait until all 20 demo games are analysed and lesson 1's drills exist
         run: frontend/e2e/wait-for-demo.sh http://localhost:8081 900
       - name: Run the Playwright tests (pinned image, Chromium, Node 26)
         # The image version must equal @playwright/test in frontend/package.json (both upgraded by hand,

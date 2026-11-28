@@ -147,11 +147,21 @@ The findings screen (#24, screenshot at the top): the blind-spot report, your fi
 
 ### End-to-end tests
 
-Playwright tests (`frontend/e2e/`) drive the real stack with the 20 demo games in Chromium: the blind-spot card, the findings list and its URLs, deep links, stepping through the evidence line on the board, the best move and the move list, a narrow screen, the theme, the error state and an axe accessibility check in both themes. Every scenario also fails on a CSP violation or a console error. They run in the Playwright image pinned in CI (same Chromium, Node 26), so nothing needs installing:
+Playwright tests (`frontend/e2e/`) drive the real stack with the 20 demo games in Chromium.
+- **Findings screen:** the blind-spot card, the findings list and its URLs, deep links, stepping through the evidence line on the board, the best move and the move list, a narrow screen, the theme, and the error state.
+- **The learning journey** (one serial sequence, #97):
+  - the map before and after;
+  - a lesson that needs positions;
+  - starting lesson 1 and answering all five puzzles with the keyboard, plus one real mouse drag;
+  - the mastery check's confirm step, and a second check answer refused (409);
+  - the result with its finding links.
+- **On every screen:** an axe accessibility check in both themes, and a failure on any CSP violation or console error.
+
+The journey scenarios change data, so they need a fresh stack (`docker compose down -v` before another run). The tests run in the Playwright image pinned in CI (same Chromium, Node 26), so nothing needs installing:
 
 ```bash
 cp .env.example .env && docker compose up -d --build      # the demo profile is the default
-frontend/e2e/wait-for-demo.sh                               # until all 20 demo games are analysed (a few minutes)
+frontend/e2e/wait-for-demo.sh                               # until the 20 demo games are analysed and lesson 1's drills exist (a few minutes)
 cd frontend && docker run --rm --ipc=host -e E2E_BASE_URL=http://host.docker.internal:8081 \
   -v "$PWD:/app" -w /app \
   mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe \
