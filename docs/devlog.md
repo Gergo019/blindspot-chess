@@ -4,6 +4,80 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-28: Lesson and result screens (#96 / PR #101)
+
+**Goal:** A player can work through a lesson: read the short explanation, solve the puzzles on the board, see the evidence for every answer, and end with an honest result (ADR 0007, amendment of 2026-11-21; ADR 0008). Frontend only, on the journey API (#90), `PuzzleBoard` (#94) and the map (#95).
+
+**Changes:**
+- **`lesson/LessonScreen.tsx`:** the lesson at `/journey/lessons/:unit/:number`, replacing the placeholder. It covers:
+  - the unstarted page with "Start lesson", and the needs-positions page;
+  - the puzzle with its side panel;
+  - the check confirm step;
+  - the answer;
+  - the error notices;
+  - the result.
+- **`lesson/AnswerPanel.tsx`:** what an answer reveals.
+- **`lesson/LessonResult.tsx`:** the result, with the next lesson from `GET /api/journey`.
+- **`lesson/progress.ts`:** the next item, "Position i of n" over the items shown, and the supported task.
+- **`PuzzleBoard`:** `awaiting="confirmation"`, so a chosen but unsent check move is not announced as "Checking…".
+- **`test/mockApi.ts`:**
+  - routes can name the method (`"POST /api/…"`);
+  - a handler can be a function (a lesson before and after it is started);
+  - lesson and answer fixtures.
+- **ADR 0007:** a dated note in the amendment (decisions 1 and 3, and the finding link waiting for #100).
+- **`CHANGELOG.md`:** one entry under Unreleased.
+- **Tests:**
+  - `LessonScreen.test.tsx` (21);
+  - the map's two node tests now open the real lesson screen.
+
+**Decisions:**
+- **Decided by Gergo:**
+  - opening a lesson only reads it, and only "Start lesson" and "Retry the mastery check" call the start POST;
+  - a needs-positions lesson is an ordinary page;
+  - a check puzzle asks "Submit move" or "Choose another move" before sending, while practice sends at once;
+  - items are a list with their own positions;
+  - only "Find a safe move" is rendered.
+- **No finding link yet (decided by Gergo):** the lesson API has no finding id, so the result links each position to its game on Lichess for now, and #100 adds the finding id to the backend first. Whether the findings screen links to a lesson stays open, as the issue allowed.
+- **Where the player is:**
+  - **Local, then confirmed:** the next item is the first one neither answered on the server nor done in this visit. The lesson is read again only when that runs out, to get the result's facts (first try, mastered, retry), and after a conflict.
+  - **No page jump:** a pinned position keeps the board on the puzzle while its answer is shown.
+- **One message for both 409s.** `ApiError` keeps nothing from the response body (#24), so "already answered" and "changed by a re-analysis" read the same. The notice says both, and the reload shows what is still open.
+  - Rejected: reading the problem's `detail` in the client (it would let server text into the UI).
+- **A failed request never loses the move.** "Send again" resends it (a check answer that did arrive comes back as a 409 and is handled as above), or the player chooses another.
+- **Focus:** the answer's heading, the result's heading, the confirm step's "Submit move" and a notice each take the focus when they appear. Each move's result is announced by `PuzzleBoard`'s `role="status"` region; no new live region.
+- **No new colours:** the check marker is bold text, the notice has a `--text` border, and focus rings use the existing `--focus`.
+
+**Verification:**
+- **In the pinned Node 26.13.1 image:**
+  - `npm test`: 195 tests in 15 files, all passing;
+  - `npm run lint`: clean;
+  - `prettier --check`: clean;
+  - `npm run build`: passes.
+  - The CSP guard passes unchanged.
+- **Mutation check** (throwaway worktree): check puzzles sending without the confirm step, and opening a lesson calling the start POST, make 12 of the 21 lesson tests fail.
+- **On a throwaway Compose stack** (project `bs96`, its own ports, demo data, `down -v` afterwards; the local `blindspot_db-data` untouched), after waiting until lesson 1 had its 5 drills: three ad-hoc Playwright walkthroughs in the pinned Playwright image, kept outside the repository.
+  1. **Lesson 2 and lesson 1:** lesson 2 shows its needs-positions page; lesson 1 stays `AVAILABLE` while viewed and starts only with the button.
+  2. **The whole lesson:**
+     - practice with the engine's moves, and the check's first item with the game's mistake through "Submit move";
+     - focused "Correct" and "Not this one";
+     - the review's orange and blue arrows stepped by keys;
+     - a result that is not mastered and needs 2 more positions, with 5 Lichess links and the practice note;
+     - a second check answer refused with 409 by the API;
+     - the result surviving a reload.
+  3. **A deleted check position's finding:** the void check shows in the result and on the map.
+- CI on this PR.
+
+**Open points / risks:**
+- **The finding link** follows with #100.
+- **Not checked on the real stack:**
+  - a retry: the demo has no unused positions, ADR 0008;
+  - a 409 from a re-analysis during an answer: the unit tests and #90's deterministic backend test cover it;
+  - axe in both themes.
+
+  These are for the Playwright and axe issue that comes next. Its journey scenarios have to wait for the drills, not only for the analysis (devlog of #95).
+
+**Links:** [#96](https://github.com/Gergo019/blindspot-chess/issues/96), [PR #101](https://github.com/Gergo019/blindspot-chess/pull/101), [#100](https://github.com/Gergo019/blindspot-chess/issues/100), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [ADR 0008](decisions/0008-learning-journey.md)
+
 ## 2026-11-28: Journey map and navigation (#95 / PR #99)
 
 **Goal:** A player can open the journey and see where they stand: the map of lessons with the evidence for each state (ADR 0007, amendment of 2026-11-21, "Map"; ADR 0008). Frontend only, on the journey API of #90. The lesson screen is #96.
