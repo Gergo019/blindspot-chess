@@ -3,6 +3,7 @@ import type { Ply } from "../chess/notation";
 import type { Cursor } from "./boardView";
 import { lineLabel } from "./boardView";
 import { renderFacts } from "./factRenderers";
+import { LineChips } from "./LineChips";
 import { formatDate, MOTIF_LABEL } from "./labels";
 
 interface Props {
@@ -52,26 +53,14 @@ export function FindingPanel({ detail, line, cursor, onCursor }: Props) {
       <h3 className="card__subtitle" id="line-title">
         Your move and what follows
       </h3>
-      <ol className="chips" aria-labelledby="line-title">
-        {line.map((ply, index) => (
-          <li key={`${String(index)}-${ply.uci}`}>
-            <button
-              type="button"
-              className={index === 0 ? "chip chip--mistake" : "chip chip--evidence"}
-              aria-current={step === index + 1 ? "step" : undefined}
-              onClick={() => {
-                onCursor({ mode: "line", step: index + 1 });
-              }}
-            >
-              <span
-                className={index === 0 ? "swatch swatch--mistake" : "swatch swatch--evidence"}
-                aria-hidden="true"
-              />
-              {lineLabel(detail, line, index)}
-            </button>
-          </li>
-        ))}
-      </ol>
+      <LineChips
+        titleId="line-title"
+        labels={line.map((_, index) => lineLabel(detail, line, index))}
+        step={step}
+        onStep={(next) => {
+          onCursor({ mode: "line", step: next });
+        }}
+      />
       {truncated ? <p className="card__note">The rest of the evidence line could not be replayed.</p> : null}
 
       <div className="actions">

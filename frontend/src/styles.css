@@ -146,6 +146,58 @@ button {
   font-weight: 500;
 }
 
+/* PuzzleBoard (#94): the result line, the promotion choice, the move field and the review below the board. */
+.puzzle__status {
+  min-height: 1.5em;
+  margin: 10px 0 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.puzzle__promotion,
+.puzzle__form,
+.puzzle__review {
+  margin-top: 12px;
+}
+
+.puzzle__label {
+  display: block;
+  margin: 0 0 6px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.puzzle__row {
+  display: flex;
+  gap: 8px;
+}
+
+.puzzle__input {
+  flex: 1;
+  min-width: 0;
+  max-width: 16rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 6px 10px;
+  font: inherit;
+}
+
+.puzzle__input:disabled {
+  color: var(--text-disabled);
+}
+
+.puzzle__input[aria-invalid="true"] {
+  border-color: var(--text);
+}
+
+.puzzle__hint {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 .legend {
   display: flex;
   flex-wrap: wrap;
