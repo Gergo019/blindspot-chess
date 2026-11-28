@@ -1,5 +1,7 @@
 import { EvidenceBoard } from "./components/EvidenceBoard";
-import { Header } from "./components/Header";
+import { Header, type View } from "./components/Header";
+import { JourneyScreen } from "./journey/JourneyScreen";
+import { LessonPlaceholder } from "./journey/LessonPlaceholder";
 import { Legend } from "./components/Legend";
 import { SidePanel } from "./components/SidePanel";
 import { START_FEN } from "./chess/notation";
@@ -10,20 +12,29 @@ import { useTheme } from "./theme/theme";
 export function App() {
   const { theme, toggleTheme } = useTheme();
   const { route, navigate } = useRoute();
-  const view = route.view === "games" ? "games" : "findings";
+  const view: View =
+    route.view === "games"
+      ? "games"
+      : route.view === "journey" || route.view === "lesson"
+        ? "journey"
+        : "findings";
 
   return (
     <div className="app">
       <Header
         view={view}
         onNavigate={(next) => {
-          navigate(next === "games" ? "/games" : "/findings");
+          navigate(`/${next}`);
         }}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
       {route.view === "findings" ? (
         <FindingsScreen findingId={route.findingId} navigate={navigate} />
+      ) : route.view === "journey" ? (
+        <JourneyScreen navigate={navigate} />
+      ) : route.view === "lesson" ? (
+        <LessonPlaceholder navigate={navigate} />
       ) : route.view === "games" ? (
         <main className="layout">
           <section className="board-column" aria-label="Board">

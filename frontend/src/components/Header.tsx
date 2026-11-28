@@ -1,9 +1,16 @@
 import type { Theme } from "../theme/contrast";
 import { ThemeToggle } from "./ThemeToggle";
 
-export type View = "findings" | "games";
+export type View = "findings" | "games" | "journey";
 
 type Props = { view: View; onNavigate: (view: View) => void; theme: Theme; onToggleTheme: () => void };
+
+/** The main navigation (ADR 0007, amendment of 2026-11-21): "Drills" became the Journey. */
+const ITEMS: { view: View; label: string }[] = [
+  { view: "findings", label: "Findings" },
+  { view: "games", label: "Games" },
+  { view: "journey", label: "Journey" },
+];
 
 export function Header({ view, onNavigate, theme, onToggleTheme }: Props) {
   return (
@@ -16,29 +23,19 @@ export function Header({ view, onNavigate, theme, onToggleTheme }: Props) {
         <span className="brand__name">BlindSpot</span>
       </div>
       <nav className="nav" aria-label="Main">
-        <button
-          type="button"
-          className="nav__item"
-          aria-current={view === "findings" ? "page" : undefined}
-          onClick={() => {
-            onNavigate("findings");
-          }}
-        >
-          Findings
-        </button>
-        <button
-          type="button"
-          className="nav__item"
-          aria-current={view === "games" ? "page" : undefined}
-          onClick={() => {
-            onNavigate("games");
-          }}
-        >
-          Games
-        </button>
-        <button type="button" className="nav__item" disabled title="Available once drills exist">
-          Drills
-        </button>
+        {ITEMS.map((item) => (
+          <button
+            key={item.view}
+            type="button"
+            className="nav__item"
+            aria-current={view === item.view ? "page" : undefined}
+            onClick={() => {
+              onNavigate(item.view);
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
       </nav>
       <ThemeToggle theme={theme} onToggle={onToggleTheme} />
     </header>

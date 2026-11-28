@@ -96,7 +96,7 @@ All three keep the layout above: the board on the left (about two thirds, at mos
   - The side panel has the unit card, which reuses the "Your blind spot" card ("Hanging pieces: in 5 of your last 20 rapid games"), and a vertical path of lesson nodes.
   - Each node shows its number, title and state with its evidence: "4 of 5 positions solved first try", "Mastered", or "2 more positions needed".
   - The nodes are a list of buttons; the recommended next one has `aria-current="step"`.
-- **Lesson (`/journey/lessons/:key`):**
+- **Lesson (`/journey/lessons/:unit/:number`, for example `/journey/lessons/hanging-piece/1`):** corrected in #95 from `/journey/lessons/:key`, because a lesson's key has a slash and the API takes it as two segments ([ADR 0008, amendment of #90](0008-learning-journey.md#amendment-2026-11-27-90-lesson-urls-and-error-answers)).
   - The side panel has the short explanation (collapsible after the first puzzle), "Position 3 of 7", and the prompt ("White to move: find a move that keeps your pieces safe").
   - Check items are marked "Mastery check: one try".
   - After an answer, the panel says "Correct" or "Not this one", the move's verdict, the engine's move, and "In your game you played …". The board then shows the game's move as the orange arrow and the evidence line in blue, stepped with the arrow keys and chips, exactly as on the findings screen.

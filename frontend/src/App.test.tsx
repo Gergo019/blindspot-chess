@@ -10,13 +10,15 @@ describe("App shell", () => {
     mockApi({ "/api/patterns": patterns(0, 0), "/api/findings": page([]) });
   });
 
-  it("shows the header with Findings, Games and a disabled Drills", () => {
+  it("shows the header with Findings, Games and Journey, and no Drills any more", () => {
     render(<App />);
     expect(screen.getByText("BlindSpot")).toBeInTheDocument();
     const nav = within(screen.getByRole("navigation", { name: "Main" }));
+    expect(nav.getAllByRole("button").map((b) => b.textContent)).toEqual(["Findings", "Games", "Journey"]);
     expect(nav.getByRole("button", { name: "Findings" })).toHaveAttribute("aria-current", "page");
     expect(nav.getByRole("button", { name: "Games" })).toBeEnabled();
-    expect(nav.getByRole("button", { name: "Drills" })).toBeDisabled();
+    expect(nav.getByRole("button", { name: "Journey" })).toBeEnabled();
+    expect(nav.queryByRole("button", { name: "Drills" })).not.toBeInTheDocument();
   });
 
   it("shows an empty state instead of data", async () => {

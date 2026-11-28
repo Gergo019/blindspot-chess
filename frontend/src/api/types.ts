@@ -116,3 +116,101 @@ export interface GameMoves {
   userColor: Side;
   moves: GameMove[];
 }
+
+/*
+ * The journey API (#90, ADR 0008), mirroring backend/src/main/java/.../training/api/JourneyResponses.java
+ * and LessonService.State, LessonItem.Role and Drill.Task.
+ */
+
+/** Derived by the backend, never stored (ADR 0008, "Soft locking"). */
+export type LessonState = "NEEDS_POSITIONS" | "AVAILABLE" | "IN_PROGRESS" | "MASTERED";
+export type LessonRole = "PRACTICE" | "CHECK";
+export type PuzzleTask = "FIND_SAFE_MOVE" | "SEE_THE_CAPTURE";
+
+/** `GET /api/journey`: the unit and its lessons in the recommended order. */
+export interface Journey {
+  unit: JourneyUnit;
+  lessons: LessonSummary[];
+}
+
+/** A unit with its motif's line of the blind-spot report (null if the report does not list the motif). */
+export interface JourneyUnit {
+  key: string;
+  title: string;
+  motif: Motif;
+  report: MotifPattern | null;
+}
+
+/**
+ * A lesson on the map. `unit` and `number` make its URL. `positionsNeeded` is what a lesson that cannot be
+ * assigned yet still needs, or what a retry of a failed or void check still needs; 0 otherwise.
+ */
+export interface LessonSummary {
+  key: string;
+  unit: string;
+  number: number;
+  title: string;
+  state: LessonState;
+  recommended: boolean;
+  solvedFirstTry: number;
+  size: number;
+  positionsNeeded: number;
+  retryAvailable: boolean;
+}
+
+/** `GET` and `POST /api/lessons/{unit}/{number}`: items in position order; positions can have gaps. */
+export interface Lesson {
+  lesson: LessonSummary;
+  explanation: string;
+  masteredAt: string | null;
+  items: LessonItem[];
+}
+
+/** One puzzle. `solution` is null until the item is answered. */
+export interface LessonItem {
+  position: number;
+  role: LessonRole;
+  currentCheck: boolean;
+  task: PuzzleTask;
+  prompt: string;
+  fen: string;
+  orientation: Side;
+  answered: boolean;
+  solvedFirstTry: boolean;
+  solution: LessonSolution | null;
+}
+
+/** What an answered puzzle reveals. */
+export interface LessonSolution {
+  game: GameSummary;
+  gameMove: Move;
+  evidenceLineUci: string[];
+  bestMove: string;
+  acceptedMoves: string[];
+}
+
+/** The body of `POST /api/lessons/{unit}/{number}/items/{position}/answer`. */
+export interface AnswerRequest {
+  moveUci: string;
+}
+
+/** The stored verdict of the answered move: its loss in winning chances and the line that refutes it. */
+export interface MoveVerdict {
+  moveUci: string;
+  san: string;
+  drop: number;
+  refutationUci: string;
+}
+
+/** The result of an answer, and the lesson afterwards. */
+export interface LessonAnswer {
+  position: number;
+  correct: boolean;
+  firstTry: boolean;
+  verdict: MoveVerdict;
+  bestMove: string;
+  acceptedMoves: string[];
+  gameMove: Move;
+  evidenceLineUci: string[];
+  lesson: LessonSummary;
+}

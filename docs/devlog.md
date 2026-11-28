@@ -4,6 +4,62 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-28: Journey map and navigation (#95 / PR #99)
+
+**Goal:** A player can open the journey and see where they stand: the map of lessons with the evidence for each state (ADR 0007, amendment of 2026-11-21, "Map"; ADR 0008). Frontend only, on the journey API of #90. The lesson screen is #96.
+
+**Changes:**
+- **`api/types.ts`:** the journey and lesson types, mirroring `JourneyResponses.java`.
+- **`api/client.ts`:** `journey`, `lesson`, `startLesson` and `answer`. The POSTs send `Content-Type: application/json`, also without a body.
+- **`router.ts`:**
+  - `/journey`;
+  - `/journey/lessons/:unit/:number`, with strict patterns for both segments;
+  - `lessonRoutePath`.
+- **`Header`:** Findings, Games, Journey; the disabled "Drills" item is gone.
+- **`journey/JourneyScreen.tsx`:** the map, in the board-and-side-panel layout: the board preview, "Your blind spot", and the lessons.
+- **`journey/preview.ts`:** which position the board previews.
+- **`journey/LessonPath.tsx`:** the lessons as a list of buttons, each with its state in words.
+- **`journey/LessonPlaceholder.tsx`:** the lesson route until #96.
+- **ADR 0007:** the lesson route is corrected to `/journey/lessons/:unit/:number` (the key has a slash; ADR 0008, amendment of #90).
+- **Tests:**
+  - `JourneyScreen.test.tsx` (12);
+  - `router.test.ts` (+21);
+  - `client.test.ts` (4);
+  - `App.test.tsx` updated for the navigation;
+  - journey fixtures in `test/mockApi.ts`.
+- **`CHANGELOG.md`:** one entry under Unreleased.
+
+**Decisions:**
+- **Decided by Gergo:**
+  - the preview shows only a started recommended lesson (its first unanswered item), read-only with `EvidenceBoard`, and the map never calls the start POST;
+  - with every item answered (the demo's failed check), the first practice item;
+  - every node opens its lesson, also one that needs positions (no locks);
+  - "Your blind spot" from `GET /api/patterns`, because the journey's `unit.report` has no window or threshold, which `BlindSpotCard` needs.
+- **The decision's premise did not hold, and its outcome does not change.** The decision said a lesson that was never started answers GET with 404. It answers 200 with no items: `JourneyApiIT.anUnassignedLessonCanBeReadWithoutItems`, confirmed on the real stack. A lesson that is not started has nothing to preview either way, so the map does not request it at all.
+- **States are words, not colours or badges.** The recommended node has `aria-current="step"`, the visible text "Recommended next" and a stronger border. Nothing rewards: the texts say what is the case.
+- **Notes for cases the decision did not name:**
+  - no recommended lesson: "No lesson is recommended right now.";
+  - a started lesson whose items a re-analysis deleted: "This lesson has no position left to show.";
+  - the lesson request failing: "The lesson's next position could not be loaded."
+- **The route accepts only what the API could accept:** a unit of lower-case words joined by single hyphens, and a positive number of up to 3 digits without a leading zero. Whether the lesson exists stays the API's answer (#96 handles its 404).
+
+**Verification:**
+- **In the pinned Node 26.13.1 image:** `npm test` (174 tests in 14 files, all passing), `npm run lint`, `prettier --check` and `npm run build` are all clean. The CSP guard passes unchanged.
+- **On a throwaway Compose stack** (own project name and ports, demo data, `down -v` afterwards; the local `blindspot_db-data` volume untouched):
+  - the real responses of `GET /api/journey` and of a started lesson matched the types field for field;
+  - with all 5 drills prepared, lesson 1 was AVAILABLE and recommended with 5 positions, and lessons 2–5 needed 5 each;
+  - a start POST without a Content-Type got 415;
+  - nginx served the SPA at the lesson route.
+- **Drill preparation timing:** during drill preparation, a read can see 4 of 5 drills ("1 more position needed"). The map then tells the truth of that moment; Playwright scenarios on the demo data will have to wait for all 5 drills, not only for the analysis.
+- CI on this PR.
+
+**Open points / risks:**
+- **The map is not yet checked in a real browser**, nor with axe in both themes; that comes with the Playwright tests after the lesson screen.
+- **`frontend/e2e/wait-for-demo.sh` waits for the analysis only.** A journey scenario also needs the drills, which are prepared about a minute per drill afterwards.
+- **The README's status line still says "No drills yet".** It changes with the release that brings the journey.
+
+**Links:** [#95](https://github.com/Gergo019/blindspot-chess/issues/95), [PR #99](https://github.com/Gergo019/blindspot-chess/pull/99), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [ADR 0008](decisions/0008-learning-journey.md)
+
 ## 2026-11-28: Interactive PuzzleBoard (#94 / PR #98)
 
 **Goal:** The board a player moves pieces on in a lesson (ADR 0007, amendment of 2026-11-21, "PuzzleBoard"; ADR 0008). It has the look of `EvidenceBoard`, can be used without a mouse, and knows no answer. This is the first frontend step of the journey (#74): a component and its tests, with no screen and no API calls.
