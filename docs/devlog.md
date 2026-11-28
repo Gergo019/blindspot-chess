@@ -4,6 +4,69 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-27: Journey and lesson endpoints (#90 / PR #93)
+
+**Goal:** The journey over HTTP for the frontend (ADR 0008, "API"): the map, a lesson, starting it or its retry, and answering a puzzle. Slice 3 of the journey backend, on #88 and #89. These are the first endpoints that change data; there is still no sign-in (#60).
+
+**Changes:**
+- **`training/api`:**
+  - `JourneyController` exposes `GET /api/journey`, `GET` and `POST /api/lessons/{unit}/{number}`, and `POST /api/lessons/{unit}/{number}/items/{position}/answer`;
+  - `JourneyResponses` holds the response and request records.
+- **`LessonService`:**
+  - **Start:** the start runs in its own transaction. A start that loses a race on a unique constraint returns the lesson the other start stored.
+  - **Answer:** an answer that fails on the foreign key to an item a re-analysis just deleted raises `LessonChangedException`.
+  - **Items:** every item carries its board orientation. An item carries its `solution` (the game, the game's move, the evidence line, the engine's move, the accepted moves) only once it is answered.
+  - **Errors:** the not-found texts are fixed ("No such lesson", "No such lesson item").
+- **`common/api`:**
+  - `ProblemException` lets a controller answer a domain exception with a status and a fixed text;
+  - `NotFoundException(detail)` replaces the key constructor;
+  - `ApiExceptionHandler` answers 415 with "Content-Type must be application/json." (Spring's own detail repeated the request's Content-Type).
+- **`Curriculum`:**
+  - `Unit.key()`;
+  - `lesson(unit, number)`, which checks both parts before any lookup.
+- **ADR 0008:**
+  - a third dated amendment: lesson URLs, status codes, the races;
+  - the API table now shows the two-segment paths.
+- **`CHANGELOG.md`:** one entry for the journey backend, #88 to #90. #88 and #89 had not added one.
+- **Tests:**
+  - `JourneyApiIT` (47);
+  - `ReadApiIT`'s OpenAPI test lists every path exactly; the read endpoints stay GET only and the only writes are the journey's two JSON POSTs;
+  - the problem-detail assertion moved to `ApiProblems`, so both API tests check errors the same way.
+
+**Decisions:**
+- **Decided by Gergo:**
+  - the two-segment path;
+  - items as a list with their positions;
+  - 409, 400 and 404 for the domain exceptions;
+  - the two races as clean answers;
+  - no echo of the URL in errors;
+  - JSON-only POSTs.
+- **The domain stays free of HTTP.** The controller turns `CheckAlreadyAnsweredException`, `LessonChangedException` and `IllegalMoveException` into a `ProblemException`, which `ApiExceptionHandler` handles like Spring's errors, so `instance` is set in one place.
+  - Rejected: handlers for training exceptions in `common/api` (`common` would depend on `training`).
+  - Rejected: an `@ExceptionHandler` in the controller (it bypasses `createResponseEntity`, which sets `instance`).
+- **A malformed lesson number is a 404 too**, not a 400 (`abc`, `0`, `01`, `-1`, too large). The path names a lesson, and anything that is not one of the curriculum's lessons is "No such lesson".
+  - Rejected: a typed `int` path variable, which would answer such URLs with a 400 in another shape.
+- **The solution is decided in the service, not the controller:** "only for answered items" is a rule (ADR 0008), so `LessonService.Item.solution` is null until the item is answered.
+- **The two retries race** is handled like two first starts: the same transaction boundary and re-read, tested. The issue named only first starts, but the start POST is idempotent for retries too.
+- **The races are tested deterministically.** A second JDBC connection holds the competing change uncommitted. The test waits until PostgreSQL reports the request waiting on a lock (`pg_stat_activity`), then commits. The polling has a 30-second ceiling but does not depend on timing to provoke the race.
+- **`firstTry` in an answer** says whether this was the item's first attempt in the lesson; with `correct`, that is "solved first try".
+
+**Verification:**
+- **`mvn verify` in `backend/`** (pinned Maven image, Testcontainers): 135 unit tests and 186 integration tests (139 + 47 `JourneyApiIT`), all passing.
+- **Mutation check** (throwaway worktree): each of these makes the targeted tests fail:
+  - a start that never re-reads after a lost race (2 tests, 500);
+  - the deleted-item race not translated (500);
+  - the solution sent for unanswered items (2);
+  - Spring's default 415 detail (3).
+- CI on this PR.
+
+**Open points / risks:**
+- **No sign-in (#60):** anyone who can reach the backend can start lessons and answer for the configured player. The ports are bound to 127.0.0.1 (#62); #60 comes before any hosted demo.
+- **`instance` is the request path,** as on every error since #86, so it contains the URL. The no-echo rule applies to `title` and `detail`.
+- **The journey map is tested with demo-like data** (5 positions from 5 analysed games). A Playwright run against the real demo data comes with the frontend.
+
+**Links:** [#90](https://github.com/Gergo019/blindspot-chess/issues/90), [PR #93](https://github.com/Gergo019/blindspot-chess/pull/93), [ADR 0008](decisions/0008-learning-journey.md)
+
 ## 2026-11-27: Lesson service and mastery rules (#89 / PR #92)
 
 **Goal:** A player can start a lesson, answer its puzzles and pass the mastery check, with every rule enforced in the backend (ADR 0008 and its amendments). Slice 2 of the journey backend, on the lesson model of #88. No HTTP layer yet; the endpoints come in #90.

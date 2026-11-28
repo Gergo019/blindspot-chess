@@ -13,16 +13,20 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import io.github.gergo019.blindspot.account.CurrentPlayer;
 import io.github.gergo019.blindspot.account.UserRepository;
 import io.github.gergo019.blindspot.analysis.FindingReadService;
 import io.github.gergo019.blindspot.analysis.api.FindingResponses.Facts;
 import io.github.gergo019.blindspot.analysis.api.FindingResponses.FindingDetail;
+import io.github.gergo019.blindspot.analysis.api.FindingResponses.GameSummary;
 import io.github.gergo019.blindspot.analysis.api.FindingResponses.Move;
 import io.github.gergo019.blindspot.common.api.NotFoundException;
+import io.github.gergo019.blindspot.game.GameEnums.PieceColor;
 
 /**
  * The learning journey for the current player (ADR 0008, #89): the lessons with their derived states,
@@ -41,6 +45,12 @@ public class LessonService {
     private static final Curriculum.Unit UNIT = Curriculum.Unit.HANGING_PIECE;
     private static final Facts NO_FACTS = new Facts(null, null, null, null, null, null, null);
     private static final String ONE_ATTEMPT_PER_CHECK_ITEM = "drill_attempts_one_per_check_item_uq";
+    /** The foreign keys an answer fails on when a re-analysis deleted its item (and drill) meanwhile. */
+    private static final List<String> ITEM_DELETED_MEANWHILE = List.of("drill_attempts_lesson_item_fk",
+            "drill_attempts_drill_id_fkey");
+    /** The unique constraints a start fails on when a concurrent start of the same lesson got there first. */
+    private static final List<String> STARTED_MEANWHILE = List.of("lesson_assignments_user_lesson_uq",
+            "lesson_items_drill_uq", "lesson_items_assignment_position_uq", "lesson_items_assignment_drill_uq");
 
     /** A lesson's state on the map. None is stored. */
     public enum State {
@@ -63,9 +73,21 @@ public class LessonService {
             int solvedFirstTry, int size, int positionsNeeded, boolean retryAvailable) {
     }
 
-    /** One puzzle of a lesson. {@code currentCheck} marks the items of the check that can still master it. */
+    /**
+     * One puzzle of a lesson. {@code currentCheck} marks the items of the check that can still master it.
+     * {@code orientation} is the side the board is shown from: the user's. {@code solution} is null until
+     * the item is answered: before the answer, a puzzle never shows the game or the solution (ADR 0008).
+     */
     public record Item(int position, LessonItem.Role role, boolean currentCheck, long drillId, Drill.Task task,
-            String fen, boolean answered, boolean solvedFirstTry) {
+            String fen, PieceColor orientation, boolean answered, boolean solvedFirstTry, Solution solution) {
+    }
+
+    /**
+     * What an answered item reveals: the game it comes from, the move played there with its evidence line,
+     * the engine's move and every accepted move.
+     */
+    public record Solution(GameSummary game, Move gameMove, List<String> evidenceLineUci, String bestMove,
+            List<String> acceptedMoves) {
     }
 
     /** A lesson with its explanation and items in order (no items before it is assigned). */
@@ -92,16 +114,19 @@ public class LessonService {
     private final DrillRepository drills;
     private final DrillAttemptRepository attempts;
     private final FindingReadService findings;
+    private final TransactionTemplate tx;
     private final Clock clock;
 
     public LessonService(CurrentPlayer player, UserRepository users, LessonAssignmentRepository assignments,
-            DrillRepository drills, DrillAttemptRepository attempts, FindingReadService findings, Clock clock) {
+            DrillRepository drills, DrillAttemptRepository attempts, FindingReadService findings,
+            TransactionTemplate tx, Clock clock) {
         this.player = player;
         this.users = users;
         this.assignments = assignments;
         this.drills = drills;
         this.attempts = attempts;
         this.findings = findings;
+        this.tx = tx;
         this.clock = clock;
     }
 
@@ -126,23 +151,37 @@ public class LessonService {
      *   <li>a failed or void check, and 2 unused positions: starts a retry on them;</li>
      *   <li>otherwise (in progress, mastered, or a retry without enough positions): changes nothing.</li>
      * </ul>
+     * When a concurrent start of the same lesson (or of a retry) commits first, this one fails on a unique
+     * constraint; it then changes nothing and returns the lesson as the other start left it (#90).
      *
      * @throws NotFoundException if the curriculum has no such lesson
      */
-    @Transactional
     public LessonDetail start(String key) {
         Curriculum.Lesson lesson = curriculumLesson(key);
         Optional<Long> userId = player.userId();
+        try {
+            return tx.execute(s -> startInTransaction(lesson, userId));
+        } catch (DataIntegrityViolationException e) {
+            if (!violates(e, STARTED_MEANWHILE)) {
+                throw e;
+            }
+            // The failed transaction is rolled back; read the lesson the concurrent start stored.
+            return tx.execute(s -> detail(lesson, journey(userId)));
+        }
+    }
+
+    private LessonDetail startInTransaction(Curriculum.Lesson lesson, Optional<Long> userId) {
         Journey journey = journey(userId);
-        LessonAssignment assignment = journey.assigned().get(key);
+        LessonAssignment assignment = journey.assigned().get(lesson.key());
         if (assignment == null) {
-            if (journey.plan().get(key) instanceof LessonFilling.Fillable fillable) {
+            if (journey.plan().get(lesson.key()) instanceof LessonFilling.Fillable fillable) {
                 assignments.save(LessonAssignment.assign(users.getReferenceById(userId.orElseThrow()), lesson,
                         drillsInOrder(fillable.drillIds())));
             }
         } else if (assignment.isRetryAvailable(journey.unused().size())) {
             assignment.retry(drillsInOrder(LessonFilling.retryPositions(journey.unused())));
         }
+        assignments.flush();   // a unique violation surfaces here, where start() can recognise it
         return detail(lesson, journey(userId));
     }
 
@@ -154,24 +193,31 @@ public class LessonService {
      * @throws IllegalMoveException if the move is not legal in the position; nothing is recorded
      * @throws CheckAlreadyAnsweredException if it is a check item that has been answered, also when a
      *         concurrent answer got there first and the database refused this one
+     * @throws LessonChangedException if a re-analysis deleted the item while the answer was being stored;
+     *         nothing is recorded
      */
     @Transactional
     public LessonAnswer answer(String key, int position, String moveUci) {
         Curriculum.Lesson lesson = curriculumLesson(key);
         Optional<Long> userId = player.userId();
         LessonAssignment assignment = userId.flatMap(id -> assignments.findByUserIdAndLessonKey(id, key))
-                .orElseThrow(() -> new NotFoundException("started lesson", key));
-        LessonItem item = assignment.item(position)
-                .orElseThrow(() -> new NotFoundException("lesson position", key + " #" + position));
+                .orElseThrow(() -> new NotFoundException("No such lesson item"));
+        LessonItem item = assignment.item(position).orElseThrow(() -> new NotFoundException("No such lesson item"));
 
         DrillAttempt attempt = assignment.answer(position, moveUci, clock.instant());
         try {
             attempts.saveAndFlush(attempt);
         } catch (DataIntegrityViolationException e) {
-            if (String.valueOf(e.getMostSpecificCause().getMessage()).contains(ONE_ATTEMPT_PER_CHECK_ITEM)) {
+            if (violates(e, List.of(ONE_ATTEMPT_PER_CHECK_ITEM))) {
                 throw new CheckAlreadyAnsweredException(position);
             }
+            if (violates(e, ITEM_DELETED_MEANWHILE)) {
+                throw new LessonChangedException(e);
+            }
             throw e;
+        } catch (OptimisticLockingFailureException e) {
+            // The drill's schedule could not be updated: its row is gone (deleted with its finding).
+            throw new LessonChangedException(e);
         }
 
         FindingDetail finding = findings.detail(item.getDrill().getFinding().getId());
@@ -180,7 +226,12 @@ public class LessonService {
     }
 
     private static Curriculum.Lesson curriculumLesson(String key) {
-        return Curriculum.lesson(key).orElseThrow(() -> new NotFoundException("lesson", key));
+        return Curriculum.lesson(key).orElseThrow(() -> new NotFoundException("No such lesson"));
+    }
+
+    private static boolean violates(DataIntegrityViolationException e, List<String> constraints) {
+        String message = String.valueOf(e.getMostSpecificCause().getMessage());
+        return constraints.stream().anyMatch(name -> message.contains("\"" + name + "\""));
     }
 
     private Journey journey(Optional<Long> userId) {
@@ -244,9 +295,26 @@ public class LessonService {
         Set<LessonItem> check = Set.copyOf(assignment.currentCheck());
         List<Item> items = assignment.getItems().stream()
                 .map(i -> new Item(i.getPosition(), i.getRole(), check.contains(i), i.getDrill().getId(),
-                        i.getDrill().getTask(), i.getDrill().getFen(), i.isAnswered(), i.isSolvedFirstTry()))
+                        i.getDrill().getTask(), i.getDrill().getFen(), orientation(i.getDrill()), i.isAnswered(),
+                        i.isSolvedFirstTry(), i.isAnswered() ? solution(i.getDrill()) : null))
                 .toList();
         return new LessonDetail(summary, lesson.explanation(), assignment.getMasteredAt(), items);
+    }
+
+    private Solution solution(Drill drill) {
+        FindingDetail finding = findings.detail(drill.getFinding().getId());
+        return new Solution(finding.game(), finding.played(), finding.evidenceLineUci(), drill.getSolutionUci(),
+                drill.acceptedMoves());
+    }
+
+    /**
+     * The user's side (ADR 0008, puzzle tasks): "Find a safe move" has the user to move; "See the capture"
+     * has the opponent to move, the board still from the user's side.
+     */
+    static PieceColor orientation(Drill drill) {
+        PieceColor toMove = drill.getFen().split(" ")[1].equals("w") ? PieceColor.WHITE : PieceColor.BLACK;
+        boolean userToMove = drill.getTask() == Drill.Task.FIND_SAFE_MOVE;
+        return userToMove ? toMove : (toMove == PieceColor.WHITE ? PieceColor.BLACK : PieceColor.WHITE);
     }
 
     /** The drills with these ids, in this order. */
