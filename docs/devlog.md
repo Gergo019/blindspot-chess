@@ -4,6 +4,47 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-28: Finding link in the lesson result (#100 / PR #102)
+
+**Goal:** The lesson result links every position to the finding it came from (ADR 0007, amendment of 2026-11-21, "Result"). The lesson API did not give the finding's id, so #96 linked only the game (decided by Gergo: backend first).
+
+**Changes:**
+- **Backend:**
+  - `LessonService.Solution` and `JourneyResponses.Solution` gain `findingId`, the id of the finding the drill came from, taken from `FindingReadService.detail`;
+  - the solution is still built only for answered items.
+- **`JourneyApiIT`:**
+  - the unanswered-item leak test also forbids `findingId` and `finding`;
+  - a new test: an answered item's `findingId` equals its drill's finding and is known to `GET /api/findings/{id}`, while unanswered items have no solution and no `findingId`.
+- **Frontend:**
+  - `LessonSolution.findingId`;
+  - the result's "The finding" link (`findingPath`, through the router) next to "Game on Lichess";
+  - the fixture gives each answered item a finding (40 + position);
+  - tests for the links, opening a finding from the result, and no link for a position without a solution.
+- **ADR 0007:** the #96 note says the link is done.
+- **`CHANGELOG.md`:** one entry under Unreleased.
+
+**Decisions:**
+- **`findingId` lives inside the solution, not on the item.** That keeps "an unanswered puzzle reveals nothing about its game" a single rule (the solution is null until the answer), not a second one to keep in step.
+  - Rejected: an item field that is null until answered.
+- **Both links stay:** the finding is the evidence (board, facts, evidence line), the game on Lichess is the source.
+- **The finding link is an in-app link.** A plain click goes through the router; a modified click (new tab) is left to the browser. It is named "The finding of position N", so the repeated links are told apart.
+- **The id comes from the findings read service** (`FindingReadService.detail(...).id()`), which the solution already reads; no access to the analysis context's entities was added.
+
+**Verification:**
+- **`mvn verify` in `backend/`** (pinned Maven image, Testcontainers): 135 unit tests and 187 integration tests (`JourneyApiIT` 48, one new), all passing.
+- **`frontend/`** (pinned Node 26.13.1 image):
+  - `npm test`: 196 tests in 15 files, all passing;
+  - `npm run lint`: clean;
+  - `prettier --check`: clean;
+  - `npm run build`: passes.
+  - The CSP guard passes unchanged.
+- CI on this PR.
+
+**Open points / risks:**
+- Whether the findings screen links back to a lesson stays open (ADR 0007).
+
+**Links:** [#100](https://github.com/Gergo019/blindspot-chess/issues/100), [PR #102](https://github.com/Gergo019/blindspot-chess/pull/102), [#96](https://github.com/Gergo019/blindspot-chess/issues/96), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md)
+
 ## 2026-11-28: Lesson and result screens (#96 / PR #101)
 
 **Goal:** A player can work through a lesson: read the short explanation, solve the puzzles on the board, see the evidence for every answer, and end with an honest result (ADR 0007, amendment of 2026-11-21; ADR 0008). Frontend only, on the journey API (#90), `PuzzleBoard` (#94) and the map (#95).

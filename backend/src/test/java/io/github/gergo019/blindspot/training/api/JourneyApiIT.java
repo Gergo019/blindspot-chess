@@ -311,9 +311,9 @@ class JourneyApiIT {
                 assertThat(item.get("answered").asBoolean()).isFalse();
                 assertThat(item.get("solution").isNull()).as(item.toString()).isTrue();
                 // No move of the position, no game: the engine's move, the other accepted move, the game's
-                // move and its evidence line, the game's Lichess id.
+                // move and its evidence line, the game's Lichess id, and not even the finding (#100).
                 assertThat(item.toString()).doesNotContain("f3d4", "b1c3", "f3e5", "d8g5", "lichess", "\"g1\"",
-                        "acceptedMoves", "bestMove", "gameMove", "evidenceLine");
+                        "acceptedMoves", "bestMove", "gameMove", "evidenceLine", "findingId", "finding");
             }
         }
     }
@@ -356,6 +356,24 @@ class JourneyApiIT {
             assertThat(solution.get("gameMove").get("uci").asString()).isEqualTo(WRONG);
             assertThat(solution.get("game").get("lichessUrl").asString()).startsWith("https://lichess.org/g");
             assertThat(item(lesson, 2).get("solution").isNull()).isTrue();
+        }
+
+        @Test
+        void anAnsweredPuzzleNamesTheFindingItCameFromAndAnUnansweredOneDoesNot() throws Exception {
+            long finding = jdbc.queryForObject("SELECT d.finding_id FROM drills d JOIN lesson_items i "
+                    + "ON i.drill_id = d.id WHERE i.position = 1", Long.class);
+            ok(answer(1, WRONG));
+
+            JsonNode lesson = get(LESSON_1);
+
+            assertThat(item(lesson, 1).get("solution").get("findingId").asLong()).isEqualTo(finding);
+            // The id is the one the findings API knows: the link from the result opens that finding (#100).
+            assertThat(get("/api/findings/" + finding).get("id").asLong()).isEqualTo(finding);
+            for (int position = 2; position <= 5; position++) {
+                JsonNode open = item(lesson, position);
+                assertThat(open.get("solution").isNull()).isTrue();
+                assertThat(open.toString()).doesNotContain("findingId");
+            }
         }
 
         @Test

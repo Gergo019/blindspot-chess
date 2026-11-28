@@ -56,9 +56,13 @@ public final class JourneyResponses {
             String fen, PieceColor orientation, boolean answered, boolean solvedFirstTry, Solution solution) {
     }
 
-    /** What an answered puzzle reveals. */
-    public record Solution(GameSummary game, Move gameMove, List<String> evidenceLineUci, String bestMove,
-            List<String> acceptedMoves) {
+    /**
+     * What an answered puzzle reveals: the finding it comes from ({@code /api/findings/{findingId}}, the
+     * evidence), the game (the source), the game's move and its evidence line, the engine's move and the
+     * accepted moves.
+     */
+    public record Solution(long findingId, GameSummary game, Move gameMove, List<String> evidenceLineUci,
+            String bestMove, List<String> acceptedMoves) {
     }
 
     /** The body of an answer. */

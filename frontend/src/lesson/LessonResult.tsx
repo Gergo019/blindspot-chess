@@ -3,7 +3,33 @@ import { api } from "../api/client";
 import type { Lesson } from "../api/types";
 import { useApi } from "../api/useApi";
 import { formatDate } from "../findings/labels";
-import { lessonRoutePath } from "../router";
+import { findingPath, lessonRoutePath } from "../router";
+
+/** A link to a finding, followed by the app's router (no page load); a modified click opens a new tab. */
+function FindingLink({
+  findingId,
+  position,
+  navigate,
+}: {
+  findingId: number;
+  position: number;
+  navigate: (path: string) => void;
+}) {
+  const path = findingPath(findingId);
+  return (
+    <a
+      href={path}
+      aria-label={`The finding of position ${String(position)}`}
+      onClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        navigate(path);
+      }}
+    >
+      The finding
+    </a>
+  );
+}
 
 /**
  * The lesson's result (ADR 0007, amendment of 2026-11-21, "Result"; ADR 0008), once every item is answered:
@@ -12,7 +38,8 @@ import { lessonRoutePath } from "../router";
  * otherwise how many more positions a retry needs. It says plainly that these are the player's own
  * positions, so this is practice and not a transfer test.
  *
- * The link to each position's finding (`/findings/:id`) waits for the finding's id in the API (#100).
+ * Each answered position links to its finding (`/findings/:id`, the evidence, #100), inside the app, and to
+ * its game on Lichess (the source).
  */
 export function LessonResult({
   lesson,
@@ -67,6 +94,8 @@ export function LessonResult({
                 <span className="result__game">
                   From your game against {item.solution.game.opponentName ?? "an unknown opponent"},{" "}
                   {formatDate(item.solution.game.playedAt)} ·{" "}
+                  <FindingLink findingId={item.solution.findingId} position={index + 1} navigate={navigate} />{" "}
+                  ·{" "}
                   <a href={item.solution.game.lichessUrl} target="_blank" rel="noreferrer noopener">
                     Game on Lichess
                   </a>

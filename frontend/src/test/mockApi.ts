@@ -164,12 +164,13 @@ export function lesson(summary: LessonSummary, items: LessonItem[]): Lesson {
   return { lesson: summary, explanation: "A piece is hanging when …", masteredAt: null, items };
 }
 
-/** An answered item, with the solution the API sends once it is answered. */
+/** An answered item, with the solution the API sends once it is answered; its finding is 40 + position. */
 export function answeredItem(position: number, solvedFirstTry: boolean, overrides: Partial<LessonItem> = {}) {
   return lessonItem(position, {
     answered: true,
     solvedFirstTry,
     solution: {
+      findingId: 40 + position,
       game: GAME,
       gameMove: { uci: "f3e5", san: "Nxe5" },
       evidenceLineUci: ["d8g5", "e5f7", "g5g2"],

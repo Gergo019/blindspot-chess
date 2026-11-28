@@ -83,11 +83,11 @@ public class LessonService {
     }
 
     /**
-     * What an answered item reveals: the game it comes from, the move played there with its evidence line,
-     * the engine's move and every accepted move.
+     * What an answered item reveals: the finding the position comes from (for the link to it, #100), the
+     * game, the move played there with its evidence line, the engine's move and every accepted move.
      */
-    public record Solution(GameSummary game, Move gameMove, List<String> evidenceLineUci, String bestMove,
-            List<String> acceptedMoves) {
+    public record Solution(long findingId, GameSummary game, Move gameMove, List<String> evidenceLineUci,
+            String bestMove, List<String> acceptedMoves) {
     }
 
     /** A lesson with its explanation and items in order (no items before it is assigned). */
@@ -303,8 +303,8 @@ public class LessonService {
 
     private Solution solution(Drill drill) {
         FindingDetail finding = findings.detail(drill.getFinding().getId());
-        return new Solution(finding.game(), finding.played(), finding.evidenceLineUci(), drill.getSolutionUci(),
-                drill.acceptedMoves());
+        return new Solution(finding.id(), finding.game(), finding.played(), finding.evidenceLineUci(),
+                drill.getSolutionUci(), drill.acceptedMoves());
     }
 
     /**

@@ -3,13 +3,17 @@ import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 import {
   answeredItem,
+  detail,
   journey,
   lesson,
   lessonAnswer,
   lessonItem,
   lessonSummary,
   mockApi,
+  MOVES,
+  page,
   patterns,
+  summary,
 } from "../test/mockApi";
 
 const PATH = "/api/lessons/hanging-piece/1";
@@ -318,6 +322,9 @@ describe("The result", () => {
       "Position 5 (mastery check): solved first try",
     ]);
     expect(result.getAllByRole("link", { name: "Game on Lichess" })).toHaveLength(5);
+    expect(
+      result.getAllByRole("link", { name: /^The finding of position / }).map((a) => a.getAttribute("href")),
+    ).toEqual(["/findings/41", "/findings/42", "/findings/43", "/findings/44", "/findings/45"]);
     expect(result.getByText(/not a test of whether the lesson carries over/)).toBeInTheDocument();
     expect(result.queryByRole("button", { name: "Retry the mastery check" })).not.toBeInTheDocument();
 
@@ -402,6 +409,36 @@ it("shows a puzzle of another task as a plain message", async () => {
 
   expect(await screen.findByText("This kind of puzzle cannot be shown yet.")).toBeInTheDocument();
   expect(screen.queryByLabelText("Your move")).not.toBeInTheDocument();
+});
+
+describe("The result's finding links (#100)", () => {
+  it("link an answered position to its finding through the app's router, and a position without a solution not at all", async () => {
+    // Position 2 has a task the screen cannot show yet: skipped, unanswered, so it has no solution.
+    open({
+      [PATH]: lesson(lessonSummary(1, { state: "IN_PROGRESS" }), [
+        answeredItem(1, true),
+        lessonItem(2, { task: "SEE_THE_CAPTURE", prompt: "See the capture" }),
+      ]),
+      "/api/findings": page([summary(41)]),
+      "/api/findings/41": detail(41),
+      "/api/games/7/moves": MOVES,
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Next" }));
+
+    const heading = await screen.findByRole("heading", { name: "Result: Hanging pieces 1" });
+    const rows = within(heading.closest("section") as HTMLElement).getAllByRole("listitem");
+    const link = within(rows[0] as HTMLElement).getByRole("link", { name: "The finding of position 1" });
+    expect(link).toHaveAttribute("href", "/findings/41");
+    expect(within(rows[0] as HTMLElement).getByRole("link", { name: "Game on Lichess" })).toBeInTheDocument();
+    expect(rows[1]).toHaveTextContent("Position 2: not answered");
+    expect(within(rows[1] as HTMLElement).queryByRole("link")).not.toBeInTheDocument();
+
+    await userEvent.click(link);
+
+    // The router changed the screen in place (jsdom never loads a page): the finding opens.
+    expect(window.location.pathname).toBe("/findings/41");
+    expect(await screen.findByRole("heading", { name: /Hanging piece · 4\. Nxe5/ })).toBeInTheDocument();
+  });
 });
 
 it("has no gamification: no points, streaks, badges or timers anywhere in a finished lesson", async () => {

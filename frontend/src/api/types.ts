@@ -182,6 +182,8 @@ export interface LessonItem {
 
 /** What an answered puzzle reveals. */
 export interface LessonSolution {
+  /** The finding the position comes from (`/findings/:id`); like the rest, only once answered (#100). */
+  findingId: number;
   game: GameSummary;
   gameMove: Move;
   evidenceLineUci: string[];
