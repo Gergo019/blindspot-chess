@@ -47,6 +47,11 @@ interface Props {
   result: PuzzleResult | null;
   /** The game's move and its evidence line, only after the answer. */
   review?: PuzzleReview | null;
+  /**
+   * What the chosen move waits for: the server's verdict (the default), or the player's confirmation, for a
+   * check puzzle that the screen sends only after "Submit move" (#96).
+   */
+  awaiting?: "verdict" | "confirmation";
 }
 
 const PIECES: { piece: PromotionPiece; name: string }[] = [
@@ -82,7 +87,15 @@ function sideName(side: Side): string {
  * One answer per mount: after a move, the inputs are disabled. A practice puzzle that may be tried again is
  * mounted again by the screen (a new `key`).
  */
-export function PuzzleBoard({ fen, orientation, prompt, onMove, result, review = null }: Props) {
+export function PuzzleBoard({
+  fen,
+  orientation,
+  prompt,
+  onMove,
+  result,
+  review = null,
+  awaiting = "verdict",
+}: Props) {
   const ids = useId();
   const toMove = sideToMove(fen);
   const boardOrientation = orientationOf(orientation);
@@ -148,7 +161,9 @@ export function PuzzleBoard({ fen, orientation, prompt, onMove, result, review =
     : played === undefined
       ? ""
       : result === null
-        ? `You played ${played.san}. Checking…`
+        ? awaiting === "confirmation"
+          ? `You chose ${played.san}. Submit it, or choose another move.`
+          : `You played ${played.san}. Checking…`
         : `${played.san}: ${result === "correct" ? "Correct." : "Not this one."}`;
 
   const label = `${sideName(toMove)} to move: ${prompt}. Board seen from ${sideName(orientation)}.`;

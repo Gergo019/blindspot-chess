@@ -585,6 +585,52 @@ kbd {
   margin-top: 4px;
 }
 
+/* The lesson screen (#96): the collapsible explanation, the check marker, notices and the result. */
+details.explanation > summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.lesson__check {
+  font-weight: 600;
+}
+
+.card--notice {
+  border-color: var(--text);
+}
+
+.answer .card__title:focus,
+.card--notice:focus,
+#result-title:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.result__label {
+  font-weight: 500;
+}
+
+.result__game {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 .moves {
   display: grid;
   grid-template-columns: 2.5em 1fr 1fr;

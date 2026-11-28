@@ -1,7 +1,7 @@
 import { EvidenceBoard } from "./components/EvidenceBoard";
 import { Header, type View } from "./components/Header";
 import { JourneyScreen } from "./journey/JourneyScreen";
-import { LessonPlaceholder } from "./journey/LessonPlaceholder";
+import { LessonScreen } from "./lesson/LessonScreen";
 import { Legend } from "./components/Legend";
 import { SidePanel } from "./components/SidePanel";
 import { START_FEN } from "./chess/notation";
@@ -34,7 +34,12 @@ export function App() {
       ) : route.view === "journey" ? (
         <JourneyScreen navigate={navigate} />
       ) : route.view === "lesson" ? (
-        <LessonPlaceholder navigate={navigate} />
+        <LessonScreen
+          key={`${route.unit}/${String(route.number)}`}
+          unit={route.unit}
+          number={route.number}
+          navigate={navigate}
+        />
       ) : route.view === "games" ? (
         <main className="layout">
           <section className="board-column" aria-label="Board">
