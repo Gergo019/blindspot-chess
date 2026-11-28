@@ -105,6 +105,10 @@ All three keep the layout above: the board on the left (about two thirds, at mos
   - Per position: solved first try or not, with a link to the finding it came from (`/findings/:id`).
   - Whether the lesson is mastered, the recommended next lesson, or "Retry the mastery check".
   - In slice 1 it also says that the positions are the user's own, so this is practice, not a transfer test (ADR 0008).
+- **Note 2026-11-28 (#96), decided by Gergo:**
+  - **Opening a lesson only reads it.** A lesson that was never started shows its explanation and "Start lesson". Only that button and "Retry the mastery check" call the start POST, because the POST assigns positions: looking at a lesson must never change data.
+  - **A check puzzle has one try,** so the screen shows the chosen move with "Submit move" and "Choose another move" before anything is sent; a misplaced drag must not cost the check. Practice puzzles send at once.
+  - **Not yet:** the result links each position to its game on Lichess; the link to its finding (`/findings/:id`) follows once the lesson API gives the finding's id (#100). Whether the findings screen links to a lesson stays open.
 
 ### `PuzzleBoard`
 

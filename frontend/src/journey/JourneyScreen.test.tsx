@@ -145,8 +145,10 @@ describe("The journey map", () => {
   });
 
   it("explains an empty journey and still lists every lesson, each of which opens", async () => {
+    const second = lessonSummary(2, { state: "NEEDS_POSITIONS", size: 0, positionsNeeded: 5 });
     await openMap({
       "/api/journey": journey(lessonSummary(1, { state: "NEEDS_POSITIONS", size: 0, positionsNeeded: 3 })),
+      "/api/lessons/hanging-piece/2": lesson(second, []),
     });
 
     expect(screen.getByText(/No lesson can be filled yet\./)).toBeInTheDocument();
@@ -156,16 +158,19 @@ describe("The journey map", () => {
     await userEvent.click(nodes()[1] as HTMLElement);
 
     expect(window.location.pathname).toBe("/journey/lessons/hanging-piece/2");
-    expect(screen.getByText("This lesson screen is built in #96.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/5 more positions needed before this lesson can start\./),
+    ).toBeInTheDocument();
   });
 
   it("opens a lesson from its node", async () => {
-    await openMap({ "/api/journey": journey(lessonSummary(1, { recommended: true })) });
+    const first = lessonSummary(1, { recommended: true });
+    await openMap({ "/api/journey": journey(first), "/api/lessons/hanging-piece/1": lesson(first, []) });
 
     await userEvent.click(nodes()[0] as HTMLElement);
 
     expect(window.location.pathname).toBe("/journey/lessons/hanging-piece/1");
-    expect(screen.getByRole("heading", { name: "Lesson" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Start lesson" })).toBeInTheDocument();
     const nav = within(screen.getByRole("navigation", { name: "Main" }));
     expect(nav.getByRole("button", { name: "Journey" })).toHaveAttribute("aria-current", "page");
 

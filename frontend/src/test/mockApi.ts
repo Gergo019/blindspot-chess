@@ -5,6 +5,7 @@ import type {
   GameMoves,
   Journey,
   Lesson,
+  LessonAnswer,
   LessonItem,
   LessonSummary,
   Page,
@@ -163,20 +164,63 @@ export function lesson(summary: LessonSummary, items: LessonItem[]): Lesson {
   return { lesson: summary, explanation: "A piece is hanging when …", masteredAt: null, items };
 }
 
+/** An answered item, with the solution the API sends once it is answered. */
+export function answeredItem(position: number, solvedFirstTry: boolean, overrides: Partial<LessonItem> = {}) {
+  return lessonItem(position, {
+    answered: true,
+    solvedFirstTry,
+    solution: {
+      game: GAME,
+      gameMove: { uci: "f3e5", san: "Nxe5" },
+      evidenceLineUci: ["d8g5", "e5f7", "g5g2"],
+      bestMove: "f3d4",
+      acceptedMoves: ["b1c3", "f3d4"],
+    },
+    ...overrides,
+  });
+}
+
+/** The answer to a move in FEN_BEFORE, as the API gives it: Nxd4 and Nc3 accepted, the game's Nxe5 not. */
+export function lessonAnswer(position: number, moveUci: string, summary: LessonSummary): LessonAnswer {
+  const correct = moveUci !== "f3e5";
+  return {
+    position,
+    correct,
+    firstTry: true,
+    verdict: correct
+      ? { moveUci, san: moveUci === "b1c3" ? "Nc3" : "Nxd4", drop: 0, refutationUci: "c6d4 c2c3" }
+      : { moveUci, san: "Nxe5", drop: 0.6, refutationUci: "d8g5 e5f7 g5g2" },
+    bestMove: "f3d4",
+    acceptedMoves: ["b1c3", "f3d4"],
+    gameMove: { uci: "f3e5", san: "Nxe5" },
+    evidenceLineUci: ["d8g5", "e5f7", "g5g2"],
+    lesson: summary,
+  };
+}
+
 export function page<T>(items: T[], totalItems = items.length): Page<T> {
   return { items, page: 0, size: 10, totalItems, totalPages: Math.max(1, Math.ceil(totalItems / 10)) };
 }
 
-/** A JSON body for 200, or `{ status, body }` for an error response. */
+/**
+ * A JSON body for 200, or `{ status, body }` for an error response, or a function returning either, called
+ * on every request (for a lesson that answers differently after it is started).
+ */
 type Handler = unknown;
 
-/** Answers fetch by path (query string ignored for matching unless the key contains "?"). */
+/**
+ * Answers fetch by path (query string ignored for matching unless the key contains "?"). A key may name the
+ * method, as in "POST /api/lessons/hanging-piece/1"; it wins over the bare path for that method.
+ */
 export function mockApi(routes: Record<string, Handler>) {
-  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url =
       typeof input === "string" ? input : input instanceof URL ? input.pathname + input.search : input.url;
-    const key = url in routes ? url : (url.split("?")[0] ?? url);
-    const handler = routes[key];
+    const path = url in routes ? url : (url.split("?")[0] ?? url);
+    const method = init?.method ?? "GET";
+    const key = `${method} ${path}` in routes ? `${method} ${path}` : path;
+    const route = routes[key];
+    const handler: unknown = typeof route === "function" ? (route as () => unknown)() : route;
     if (handler === undefined) return Promise.resolve(new Response(null, { status: 404 }));
     if (typeof handler === "object" && handler !== null && "status" in handler) {
       const { status, body } = handler as { status: number; body?: unknown };
