@@ -1,4 +1,4 @@
-import type { View } from "./Header";
+type View = "findings" | "games";
 
 const EMPTY: Record<View, { title: string; body: string }> = {
   findings: {

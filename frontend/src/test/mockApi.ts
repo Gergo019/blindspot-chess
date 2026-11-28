@@ -1,5 +1,15 @@
 import { vi } from "vitest";
-import type { FindingDetail, FindingSummary, GameMoves, Page, PatternReport } from "../api/types";
+import type {
+  FindingDetail,
+  FindingSummary,
+  GameMoves,
+  Journey,
+  Lesson,
+  LessonItem,
+  LessonSummary,
+  Page,
+  PatternReport,
+} from "../api/types";
 
 /**
  * A mocked API for component tests (#24). The fixture is a real short game, so SAN is what chess.js
@@ -96,6 +106,61 @@ export function patterns(gamesWithFinding: number, sampleSize = 20): PatternRepo
     // Only motifs with a detector, as the API sends them (no knight-fork detector yet, #26).
     motifs: [{ motif: "HANGING_PIECE", gamesWithFinding, sampleSize, pattern: gamesWithFinding >= 3 }],
   };
+}
+
+/** A lesson of the Hanging pieces unit as GET /api/journey lists it; by default available, size 5. */
+export function lessonSummary(number: number, overrides: Partial<LessonSummary> = {}): LessonSummary {
+  return {
+    key: `hanging-piece/${String(number)}`,
+    unit: "hanging-piece",
+    number,
+    title: `Hanging pieces ${String(number)}`,
+    state: "AVAILABLE",
+    recommended: false,
+    solvedFirstTry: 0,
+    size: 5,
+    positionsNeeded: 0,
+    retryAvailable: false,
+    ...overrides,
+  };
+}
+
+/** The journey with these lessons; lessons 2 to 5 default to needing 5 positions, as with the demo data. */
+export function journey(first: LessonSummary, rest: LessonSummary[] = []): Journey {
+  const lessons = [first, ...rest];
+  for (let n = lessons.length + 1; n <= 5; n++) {
+    lessons.push(lessonSummary(n, { state: "NEEDS_POSITIONS", size: 0, positionsNeeded: 5 }));
+  }
+  return {
+    unit: {
+      key: "hanging-piece",
+      title: "Hanging pieces",
+      motif: "HANGING_PIECE",
+      report: { motif: "HANGING_PIECE", gamesWithFinding: 5, sampleSize: 20, pattern: true },
+    },
+    lessons,
+  };
+}
+
+/** An item of a started lesson; unanswered items have no solution, as the API sends them. */
+export function lessonItem(position: number, overrides: Partial<LessonItem> = {}): LessonItem {
+  return {
+    position,
+    role: position <= 3 ? "PRACTICE" : "CHECK",
+    currentCheck: position > 3,
+    task: "FIND_SAFE_MOVE",
+    prompt: "Find a safe move",
+    fen: FEN_BEFORE,
+    orientation: "WHITE",
+    answered: false,
+    solvedFirstTry: false,
+    solution: null,
+    ...overrides,
+  };
+}
+
+export function lesson(summary: LessonSummary, items: LessonItem[]): Lesson {
+  return { lesson: summary, explanation: "A piece is hanging when …", masteredAt: null, items };
 }
 
 export function page<T>(items: T[], totalItems = items.length): Page<T> {

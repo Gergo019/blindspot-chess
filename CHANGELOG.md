@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Frontend: the journey map at `/journey` (#95).
+  - **Navigation:** Findings, Games, Journey; the disabled "Drills" item is gone.
+  - **The map:** the lessons are a path of buttons, each with its state in words ("4 of 5 positions solved first try", "Mastered", "2 more positions needed", the retry hint), with the recommended one marked. The unit card comes from the blind-spot report.
+  - **Preview:** the board shows the recommended lesson's next position once it is started. The map never starts a lesson.
+  - **Lesson route:** `/journey/lessons/:unit/:number` shows a placeholder until the lesson screen (#96). The client and types for the lesson endpoints are in place for it.
 - Frontend: `PuzzleBoard` (#94), the interactive board for lesson puzzles (ADR 0007, amendment of 2026-11-21). It has the look of `EvidenceBoard`, and the player moves by dragging, by clicking the piece and then the target square, or by typing SAN or UCI. A promotion offers a labelled choice. chess.js refuses illegal moves at once, and correctness is left to the server. Each result is announced, and after the answer the game's move and the evidence line are shown as on the findings screen. There is no screen yet.
 - The learning journey's backend, slice 1 (Hanging Pieces, ADR 0008 and its amendments):
   - **Lesson model** (#88, migrations `V6` and `V7`): lesson assignments, lesson items (a drill in one lesson only), and lesson attempts on `drill_attempts`, with one attempt per check puzzle held by the database. The curriculum is in code (`journey-1`, lessons `hanging-piece/1` to `/5`).

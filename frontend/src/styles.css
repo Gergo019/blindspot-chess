@@ -146,6 +146,86 @@ button {
   font-weight: 500;
 }
 
+/*
+ * The journey's lesson path (#95): a vertical list of buttons joined by a line. States are words, not colours
+ * or badges (ADR 0007, "No gamification on the map"); the recommended lesson has a stronger border.
+ */
+.path {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.path__step {
+  position: relative;
+}
+
+.path__step + .path__step::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 23px;
+  height: 10px;
+  border-left: 2px solid var(--border);
+}
+
+.path__node {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.path__node[aria-current="step"] {
+  border-color: var(--text);
+  border-width: 2px;
+  padding: 9px 11px;
+}
+
+.path__number {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.path__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.path__title {
+  font-weight: 600;
+}
+
+.path__state {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.path__next {
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 /* PuzzleBoard (#94): the result line, the promotion choice, the move field and the review below the board. */
 .puzzle__status {
   min-height: 1.5em;
