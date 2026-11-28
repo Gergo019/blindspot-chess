@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Chessboard } from "react-chessboard";
+import { Chessboard, defaultPieces, type PieceRenderObject } from "react-chessboard";
 import type { Side } from "../api/types";
 import {
   type MoveAttempt,
@@ -53,6 +53,36 @@ interface Props {
    */
   awaiting?: "verdict" | "confirmation";
 }
+
+const PIECE_NAMES: Record<string, string> = {
+  P: "pawn",
+  N: "knight",
+  B: "bishop",
+  R: "rook",
+  Q: "queen",
+  K: "king",
+};
+
+/**
+ * react-chessboard's own pieces, each wrapped in a labelled image ("White knight on f3"). The board is not
+ * `inert` here (dragging needs it), and the library renders every piece inside a dnd-kit button that has no
+ * name; the button takes its name from this content. axe reported them as unnamed commands (#97).
+ */
+const LABELLED_PIECES: PieceRenderObject = Object.fromEntries(
+  Object.entries(defaultPieces).map(([code, Piece]) => {
+    const name = `${code.startsWith("w") ? "White" : "Black"} ${PIECE_NAMES[code.slice(1)] ?? "piece"}`;
+    const Labelled = (props?: Parameters<typeof Piece>[0]) => (
+      <span
+        role="img"
+        aria-label={props?.square ? `${name} on ${props.square}` : name}
+        style={{ display: "block", width: "100%", height: "100%" }}
+      >
+        {Piece(props)}
+      </span>
+    );
+    return [code, Labelled];
+  }),
+);
 
 const PIECES: { piece: PromotionPiece; name: string }[] = [
   { piece: "q", name: "Queen" },
@@ -198,6 +228,7 @@ export function PuzzleBoard({
                   `${sourceSquare} to ${targetSquare}`,
                 ),
               onSquareClick,
+              pieces: LABELLED_PIECES,
             }}
           />
           {reviewView ? <BoardArrows arrows={reviewView.arrows} orientation={boardOrientation} /> : null}

@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- End-to-end tests for the learning journey (#97): one serial Playwright sequence on the demo data.
+  - **The sequence:** the map before and after, a lesson that needs positions, the start, practice and check puzzles answered with the keyboard and one real drag, the confirm step, a refused second check answer, and the result with its finding links.
+  - **Checks:** axe in both themes on the map, a puzzle, an answer and the result.
+  - **Setup:** `wait-for-demo.sh` now also waits until lesson 1's drills exist.
+  - **Fix:** `PuzzleBoard` names its pieces ("White knight on f3"), because axe found react-chessboard's draggable pieces unnamed.
 - The lesson result links each answered position to its finding (#100). The API gives the finding's id in an answered item's solution (`findingId`), and never for an unanswered one.
 - Frontend: the lesson screen at `/journey/lessons/:unit/:number` (#96). Opening a lesson only reads it; "Start lesson" and "Retry the mastery check" are the only buttons that change data.
   - **Puzzles:** one at a time on `PuzzleBoard`. A mastery check puzzle asks for "Submit move" before sending.

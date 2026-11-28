@@ -84,6 +84,16 @@ describe("PuzzleBoard", () => {
     ).toBeVisible();
   });
 
+  it("names every piece, so the board's draggable buttons are not unnamed (#97, axe aria-command-name)", () => {
+    const { square } = setup();
+
+    expect(within(square("f3")).getByRole("img", { name: "White knight on f3" })).toBeInTheDocument();
+    expect(within(square("d4")).getByRole("img", { name: "Black knight on d4" })).toBeInTheDocument();
+    const draggable = square("f3").querySelector('[aria-roledescription="draggable"]');
+    expect(draggable).toHaveAccessibleName("White knight on f3");
+    expect(screen.getAllByRole("img", { name: / on [a-h][1-8]$/ })).toHaveLength(32); // nothing captured yet
+  });
+
   describe("the text field", () => {
     it.each([
       ["Nxd4", "f3d4", "Nxd4"],

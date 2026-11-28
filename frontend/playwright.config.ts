@@ -7,7 +7,9 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "e2e",
-  // Read-only scenarios on shared demo data: safe to run in parallel.
+  // The findings scenarios only read the shared demo data, so they run in parallel. The journey scenarios
+  // (journey.spec.ts) change it (a lesson is started and answered): they run as one serial sequence in one
+  // worker, no other spec reads the journey, and they need fresh demo data (`docker compose down -v`).
   fullyParallel: true,
   ...(process.env["CI"] ? { workers: 2 } : {}),
   // No retries: a flaky test should fail and be fixed, not be hidden.

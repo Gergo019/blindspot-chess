@@ -4,6 +4,78 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-28: Journey end-to-end checks (#97 / PR #103)
+
+**Goal:** The journey works end to end on the real stack, and stays accessible and within the CSP: Playwright scenarios on the demo data, with axe and the CSP guard on every new screen (ADR 0007, ADR 0008, #52, #74). Frontend and test code only.
+
+**Changes:**
+- **`frontend/e2e/journey.spec.ts`:** "10. the learning journey", one serial sequence of 9 tests:
+  1. the data is fresh;
+  2. the map before the start, with axe and the narrow layout, and proof that viewing started nothing;
+  3. a needs-positions lesson;
+  4. "Start lesson" with Tab and Enter, and the first practice puzzle right, with the review's arrow keys, axe on the puzzle and the answer, and the narrow lesson layout;
+  5. the second practice puzzle wrong and the third right;
+  6. a real mouse drag and the confirm step's "Choose another move";
+  7. a second check answer refused (409) from a stale tab;
+  8. the last check and the result, with axe, the five finding links and a reload;
+  9. the map afterwards.
+- **`wait-for-demo.sh`:** after the analysis, it also waits until lesson 1's drills exist (`positionsNeeded` 0 in `GET /api/journey`), under the same timeout. The CI step's name and the README say so.
+- **`PuzzleBoard`:** renders react-chessboard's own pieces inside labelled images ("White knight on f3"), because of axe (below), with a unit test.
+- **`playwright.config.ts`:** the note on parallel runs explains why the journey is serial and that it needs fresh data.
+- **README:** the e2e section lists what the suite covers, the drill wait, and that the journey needs a fresh stack.
+- **`CHANGELOG.md`:** one entry under Unreleased.
+
+**Decisions:**
+- **Decided by Gergo:**
+  - one serial sequence, because the scenarios change data, with the demo's real ending (not mastered, a retry needs 2 more positions);
+  - moves from the findings API, for the finding whose position is the puzzle's FEN;
+  - the browser's 409 console error allowed in the one test that provokes it;
+  - the findings flake (below) tracked in #104 rather than fixed here.
+- **State:**
+  - **One worker, in order:** the sequence runs in one worker, and a failure skips the rest.
+  - **Fails fast on stale data:** test 1 fails with "run it on a new stack" on data that is not fresh.
+  - **No interference:** no other spec reads the journey, and the journey changes nothing the findings specs read, so they stay parallel.
+- **"A full lesson by keyboard only" and "a real mouse drag" in one lesson.** The demo has one lesson with five puzzles, each answered once, so the drag is made on a check puzzle and then withdrawn with "Choose another move" (a check waits for "Submit move"). All five answers are typed into the field, and the confirm step, "Next" and "Start lesson" are reached with Tab.
+- **Moves are checked against their source.** The test asserts one finding per puzzle and five different findings; "Correct" and "Not this one" confirm the drills' stored verdicts. On the throwaway stack, the findings' best move was accepted by all five drills' verdicts (for one it is not the drill's first choice, d8d7 against g8h6, but it is accepted).
+- **dnd-kit swallows clicks until 50 ms after a drop.** It stops click events on the document from the start of a drag until 50 ms after the drop, so the drop is not also a click. Enter on a button is a click, and the test pressed it within those 50 ms. A person cannot click that fast, so it is not a product bug; the test presses again while the button is still there, waiting on the field (`toPass`), not on time.
+- **The drag needs the whole board on screen:** the default 720 px window cuts the board's last rank, so that test uses 1280×1200.
+- **The second tab in the 409 test is not under the guard.** The guard (fixtures.ts) watches the test's own page; that page is the one that gets the 409.
+
+**axe:**
+- **Finding:** on a puzzle, `aria-command-name` (serious). react-chessboard renders every piece inside dnd-kit's `role="button"`, which has no name. `EvidenceBoard` avoids it by being `inert`; `PuzzleBoard` cannot, because dragging needs the buttons.
+- **Fix:**
+  - the library's `defaultPieces`, each wrapped in `role="img"` with "White knight on f3", passed as `pieces`;
+  - each button takes its name from that, and the look is unchanged;
+  - after the fix, there are no serious or critical violations on the map, a puzzle, an answered puzzle or the result, in both themes.
+- **No exception recorded.**
+
+**Verification:**
+- **Frontend, in the pinned Node 26.13.1 image:**
+  - `npm test`: 197 tests, all passing;
+  - `npm run lint`: clean;
+  - `prettier --check`: clean;
+  - `npm run build`: passes.
+  - The CSP guard passes unchanged.
+- **Throwaway stacks** (`bs97`, `bs97b` and `bs97c`, their own ports, `down -v`; `blindspot_db-data` untouched), in the pinned Playwright image:
+  - the journey sequence three times on reset data: all passing;
+  - the full suite on a fresh stack with `CI=true`: 19 of 19 in 13 s.
+- **CI on this PR:**
+  - attempt 1: the job took 6.3 min (analysis 251 s, drills +10 s, Playwright 38 s). All journey tests passed; the existing findings test 4 failed (below).
+  - attempt 2: green in 8.8 min (a slower analysis of 331 s, drills +60 s, Playwright 49 s).
+  - **Compared with before:** the job took 6.0–7.8 min (median 6.3) before this PR, and the Playwright step 38 s on `main`. So the drill wait adds about 10–60 s and the journey tests about 10 s, with no extra job.
+- **The final run on the devlog commit** is reported with the PR.
+
+**Open points / risks:**
+- **#104: a stale piece after a fast step.**
+  - **What fails:** the existing findings test "4. chips and the arrow keys" can fail when the board's animation is still running (CI attempt 1).
+  - **Locally:** 4 of 40 runs failed under load, and 40 of 40 passed with "reduce motion".
+  - **Cause:** react-chessboard's animation can leave a stale piece when the position changes during it.
+  - **Status:** on `main` already; a player stepping fast could see a wrong board for a moment. Until #104, a rerun of the failed job passes.
+- **Not reachable on the demo data:** a mastered lesson and a retry, because there is one fillable lesson and no unused position. They stay covered by `LessonServiceIT`, `lesson_mastery.feature` and `LessonScreen.test.tsx`.
+- **The journey sequence needs fresh demo data:** CI always starts a new stack; locally, `docker compose down -v` first.
+
+**Links:** [#97](https://github.com/Gergo019/blindspot-chess/issues/97), [PR #103](https://github.com/Gergo019/blindspot-chess/pull/103), [#104](https://github.com/Gergo019/blindspot-chess/issues/104), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [ADR 0008](decisions/0008-learning-journey.md)
+
 ## 2026-11-28: Finding link in the lesson result (#100 / PR #102)
 
 **Goal:** The lesson result links every position to the finding it came from (ADR 0007, amendment of 2026-11-21, "Result"). The lesson API did not give the finding's id, so #96 linked only the game (decided by Gergo: backend first).
