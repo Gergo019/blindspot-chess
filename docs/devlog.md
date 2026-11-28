@@ -4,6 +4,69 @@ A chronological record of what was done, why, and what to change if something br
 
 Entry format: Goal, Changes, Decisions (with the reason and the alternative rejected), Verification, Open points / risks, Links.
 
+## 2026-11-28: Interactive PuzzleBoard (#94 / PR #98)
+
+**Goal:** The board a player moves pieces on in a lesson (ADR 0007, amendment of 2026-11-21, "PuzzleBoard"; ADR 0008). It has the look of `EvidenceBoard`, can be used without a mouse, and knows no answer. This is the first frontend step of the journey (#74): a component and its tests, with no screen and no API calls.
+
+**Changes:**
+- **`components/PuzzleBoard.tsx`:**
+  - props `fen`, `orientation`, `prompt`, `onMove({ uci, san, fen })`, `result` (`"correct"`, `"wrong"` or null) and `review` (`{ gameMoveUci, evidenceLineUci }` or null, only after the answer);
+  - moves by dragging, by click-then-click, or by a labelled text field (SAN or UCI);
+  - a labelled promotion group;
+  - a `role="status"` region for every result;
+  - after the answer, the review: an orange arrow for the game's move and blue for the evidence line, with chips and arrow keys.
+- **`chess/moveInput.ts`:** input to a legal move, a pending promotion or a refusal, using chess.js only.
+- **Shared with `EvidenceBoard`, not copied:**
+  - `components/boardLook.ts`: the look, "reduce motion", the square styles;
+  - `components/BoardArrows.tsx`: the halo arrows.
+
+  `EvidenceBoard` imports both; its output is unchanged.
+- **Reused from the findings screen, by extraction:**
+  - `boardView.ts`: `lineView` (the line branch of `buildView`, from a start position instead of a finding), `lineLabelAt`, `plyOf` and `nextStep`;
+  - `findings/useStepKeys.ts`: the arrow-key listener;
+  - `findings/LineChips.tsx`: the chips.
+
+  `FindingsScreen` and `FindingPanel` use these now.
+- **`styles.css`:** the puzzle's status line, field and promotion group, with the existing tokens.
+- **Tests:**
+  - `moveInput.test.ts` (19);
+  - `PuzzleBoard.test.tsx` (17, with the real react-chessboard);
+  - `PuzzleBoard.drag.test.tsx` (4, with a stubbed board).
+- **`CHANGELOG.md`:** one line under Unreleased.
+
+**Decisions:**
+- **The component cannot hold an answer:** it has no prop for the accepted moves, the engine's move or the game's move, and a `@ts-expect-error` test keeps it so (`tsc` runs on the tests). The review is a separate prop that the screen passes only after the answer.
+- **One answer per mount.** After a move the inputs are disabled until the screen mounts the next puzzle (or the same practice puzzle again, with a new `key`). That rules out a double answer to a check puzzle from a double drop or a double Enter.
+- **The move is handed on at once,** without a "confirm" step. The ADR has none. Whether a check puzzle, which has one try, should ask before sending is for the lesson screen to decide.
+- **`review` is played from the puzzle's FEN,** which is right for "Find a safe move": the game's move was played from the same position. "See the capture" (not built yet) starts after the mistake and will need its own review line.
+- **No move numbers from the API:** `plyOf` reads them from the FEN (side to move and full-move number), so the chips say "4. Nxe5" as on the findings screen.
+- **Selection is a neutral ring** (`--text` between halos), because orange and blue mean "your mistake" and "evidence" (ADR 0007). "Correct" and "Not this one" are text with an `aria-hidden` icon, no third colour.
+- **Dragging is tested on the handler, not the gesture.** react-chessboard drags through dnd-kit's pointer sensors, which jsdom cannot drive, so `PuzzleBoard.drag.test.tsx` stubs the board and calls `onPieceDrop` as react-chessboard does. The real gesture comes with the lesson screen's Playwright test.
+- **The tests find the status region by test id as well as by role:** dnd-kit renders its own `role="status"` region inside the board.
+- **No new dependency.**
+
+**Verification:**
+- In the pinned Node 26.13.1 image:
+  - `npm test`: 137 tests in 12 files, all passing;
+  - `npm run lint`: clean;
+  - `prettier --check`: clean;
+  - `npm run build` (with `tsc`): passes.
+- The CSP guard (`security.test.ts`) passes unchanged.
+- The 6 act() warnings in the output come from `App.test.tsx` and appear on `main` too.
+- CI on this PR.
+
+**Open points / risks:**
+- **Unchecked without a screen:**
+  - dragging in a real browser;
+  - focus order next to react-chessboard's unnamed piece buttons;
+  - what screen readers say;
+  - axe in both themes.
+
+  These belong to the lesson screen and its Playwright tests.
+- **The board group still contains react-chessboard's unnamed, focusable piece buttons** (#52). They are needed for dragging, so the board cannot be `inert` as `EvidenceBoard` is. The text field is the keyboard path, and axe on the real screen will show whether the buttons need more.
+
+**Links:** [#94](https://github.com/Gergo019/blindspot-chess/issues/94), [PR #98](https://github.com/Gergo019/blindspot-chess/pull/98), [ADR 0007](decisions/0007-frontend-board-and-visual-identity.md), [ADR 0008](decisions/0008-learning-journey.md)
+
 ## 2026-11-27: Journey and lesson endpoints (#90 / PR #93)
 
 **Goal:** The journey over HTTP for the frontend (ADR 0008, "API"): the map, a lesson, starting it or its retry, and answering a puzzle. Slice 3 of the journey backend, on #88 and #89. These are the first endpoints that change data; there is still no sign-in (#60).
