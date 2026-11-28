@@ -6,11 +6,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- The lesson result links each answered position to its finding (#100). The API gives the finding's id in an answered item's solution (`findingId`), and never for an unanswered one.
 - Frontend: the lesson screen at `/journey/lessons/:unit/:number` (#96). Opening a lesson only reads it; "Start lesson" and "Retry the mastery check" are the only buttons that change data.
   - **Puzzles:** one at a time on `PuzzleBoard`. A mastery check puzzle asks for "Submit move" before sending.
   - **After an answer:** "Correct" or "Not this one", what the move costs, the line that refutes it, the engine's move, and the move from the game, shown on the board.
   - **Errors:** a 409 explains itself and reloads the lesson.
-  - **The result:** per position, mastered or not, the next lesson or the retry, and plainly practice, not a transfer test. The links to findings follow with #100.
+  - **The result:** per position, mastered or not, the next lesson or the retry, and plainly practice, not a transfer test. Each position links to its finding (since #100) and its game.
 - Frontend: the journey map at `/journey` (#95).
   - **Navigation:** Findings, Games, Journey; the disabled "Drills" item is gone.
   - **The map:** the lessons are a path of buttons, each with its state in words ("4 of 5 positions solved first try", "Mastered", "2 more positions needed", the retry hint), with the recommended one marked. The unit card comes from the blind-spot report.

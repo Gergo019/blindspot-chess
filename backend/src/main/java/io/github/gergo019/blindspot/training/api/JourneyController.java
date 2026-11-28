@@ -122,7 +122,8 @@ public class JourneyController {
     private static Item item(LessonService.Item i) {
         LessonService.Solution s = i.solution();
         Solution solution = s == null ? null
-                : new Solution(s.game(), s.gameMove(), s.evidenceLineUci(), s.bestMove(), s.acceptedMoves());
+                : new Solution(s.findingId(), s.game(), s.gameMove(), s.evidenceLineUci(), s.bestMove(),
+                        s.acceptedMoves());
         return new Item(i.position(), i.role(), i.currentCheck(), i.task(), prompt(i.task()), i.fen(),
                 i.orientation(), i.answered(), i.solvedFirstTry(), solution);
     }
